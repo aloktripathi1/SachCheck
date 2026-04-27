@@ -12,9 +12,10 @@ interface HeaderProps {
 export function Header({ view, onNavigate }: HeaderProps) {
   const [mobileOpen, setMobileOpen] = useState(false)
 
-  const navItems: { v: AppView; label: string }[] = [
+  const navItems: { v: AppView; label: string; badge?: string }[] = [
     { v: 'landing', label: 'Home' },
     { v: 'analyze', label: 'Analyze' },
+    { v: 'image',   label: 'Image Check', badge: 'NEW' },
   ]
 
   const handleNav = (v: AppView) => {
@@ -55,18 +56,23 @@ export function Header({ view, onNavigate }: HeaderProps) {
 
             {/* Desktop Nav */}
             <nav className="hidden md:flex items-center gap-1">
-              {navItems.map(({ v, label }) => (
+              {navItems.map(({ v, label, badge }) => (
                 <button
                   key={v}
                   onClick={() => handleNav(v)}
                   className={cn(
-                    'px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
+                    'flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-200',
                     view === v
                       ? 'bg-white/10 text-white'
                       : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
                   )}
                 >
                   {label}
+                  {badge && (
+                    <span className="text-[8px] font-bold text-blue-400 border border-blue-500/30 bg-blue-500/10 px-1 py-0.5 rounded tracking-wide">
+                      {badge}
+                    </span>
+                  )}
                 </button>
               ))}
               <a
