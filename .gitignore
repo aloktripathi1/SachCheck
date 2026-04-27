@@ -1,18 +1,64 @@
-# Python
+# ── Python ────────────────────────────────────────────────────────────────────
 __pycache__/
 *.py[cod]
-.venv/
-backend/.venv/
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.coverage
+.hypothesis/
 
-# Node
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# ── Node / Frontend ───────────────────────────────────────────────────────────
 node_modules/
 frontend/node_modules/
 frontend/dist/
+frontend/.vite/
 frontend/tsconfig.tsbuildinfo
+*.tsbuildinfo
 
-# Env files
+# ── Environment & secrets ──────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
 backend/.env
 frontend/.env
+frontend/.env.local
+!backend/.env.example
+!frontend/.env.example
 
-# Logs
+# ── OS / Editor ───────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+.Spotlight-V100
+.Trashes
+
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# ── Logs & temp ───────────────────────────────────────────────────────────────
 *.log
+logs/
+tmp/
+temp/
+*.tmp
+*.bak
+*.orig
