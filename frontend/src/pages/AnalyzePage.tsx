@@ -1,17 +1,41 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import { useEffect, useRef } from 'react'
 import {
   ShieldCheck, Sparkles, ChevronLeft, Info,
-  CheckCircle2, XCircle, AlertTriangle, HelpCircle
+  CheckCircle2, XCircle, AlertTriangle, HelpCircle, ServerCrash, RotateCcw
 } from 'lucide-react'
 import { InputPanel } from '../components/InputPanel'
 import { PipelineVisualizer } from '../components/PipelineVisualizer'
 import { ClaimCard } from '../components/ClaimCard'
 import { ArticleScoreCard } from '../components/ArticleScoreCard'
 import { useAnalysis } from '../hooks/useAnalysis'
+import { useRecentChecks, titleFromInput } from '../hooks/useRecentChecks'
 import type { AppView } from '../types'
 
 interface AnalyzePageProps {
   onNavigate: (view: AppView) => void
+}
+
+function ErrorState({ message, onReset }: { message: string; onReset: () => void }) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      className="flex flex-col items-center justify-center py-20 text-center"
+    >
+      <div className="w-16 h-16 rounded-2xl bg-red-500/8 border border-red-500/20 flex items-center justify-center mb-5">
+        <ServerCrash size={26} className="text-red-400" />
+      </div>
+      <h3 className="text-base font-semibold text-red-400 mb-2">Analysis failed</h3>
+      <p className="text-sm text-slate-500 max-w-sm leading-relaxed mb-6">{message}</p>
+      <button
+        onClick={onReset}
+        className="flex items-center gap-2 px-4 py-2 rounded-lg border border-white/10 bg-white/5 text-sm text-slate-300 hover:bg-white/10 transition-all"
+      >
+        <RotateCcw size={13} /> Try again
+      </button>
+    </motion.div>
+  )
 }
 
 function EmptyState() {
@@ -78,13 +102,33 @@ function SummaryBar({ claimsCount, falseCount, trueCount }: {
 
 export function AnalyzePage({ onNavigate }: AnalyzePageProps) {
   const { state, analyze, reset } = useAnalysis()
+  const { checks: recentChecks, add: addRecent, clear: clearRecent } = useRecentChecks()
+  const pendingInputRef = useRef('')
 
   const isAnalyzing = ['extracting', 'gathering', 'scoring', 'synthesizing'].includes(state.step)
-  const isComplete = state.step === 'complete'
-  const hasResults = state.claims.length > 0
+  const isComplete  = state.step === 'complete'
+  const isError     = state.step === 'error'
+  const hasResults  = state.claims.length > 0
 
   const verifiedClaims = state.claims.filter(c => c.verdict === 'true' || c.verdict === 'mostly_true')
-  const falseClaims = state.claims.filter(c => c.verdict === 'false' || c.verdict === 'mostly_false')
+  const falseClaims    = state.claims.filter(c => c.verdict === 'false' || c.verdict === 'mostly_false')
+
+  // Track the input text so we can derive a title when analysis completes
+  const handleAnalyze = (input: string) => {
+    pendingInputRef.current = input
+    analyze(input)
+  }
+
+  // Save to recent history whenever a check completes with a score
+  useEffect(() => {
+    if (state.step === 'complete' && state.articleScore && pendingInputRef.current) {
+      addRecent({
+        title: titleFromInput(pendingInputRef.current),
+        score: state.articleScore.score,
+        band:  state.articleScore.band,
+      })
+    }
+  }, [state.step, state.articleScore, addRecent])
 
   return (
     <div className="min-h-screen pt-20 pb-16">
@@ -125,10 +169,12 @@ export function AnalyzePage({ onNavigate }: AnalyzePageProps) {
           {/* LEFT: Input panel */}
           <div className="lg:sticky lg:top-24 lg:self-start">
             <InputPanel
-              onAnalyze={analyze}
+              onAnalyze={handleAnalyze}
               onReset={reset}
               isAnalyzing={isAnalyzing}
               isComplete={isComplete}
+              recentChecks={recentChecks}
+              onClearRecent={clearRecent}
             />
           </div>
 
@@ -145,8 +191,9 @@ export function AnalyzePage({ onNavigate }: AnalyzePageProps) {
               )}
             </AnimatePresence>
 
-            {/* Claims */}
-            {!hasResults && !isAnalyzing && <EmptyState />}
+            {/* Error / Empty state */}
+            {isError && <ErrorState message={state.error ?? 'Something went wrong.'} onReset={reset} />}
+            {!hasResults && !isAnalyzing && !isError && <EmptyState />}
 
             {hasResults && (
               <div>
