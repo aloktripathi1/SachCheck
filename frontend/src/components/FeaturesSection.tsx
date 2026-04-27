@@ -54,7 +54,7 @@ export function FeaturesSection() {
   const isInView = useInView(ref, { once: true, margin: '-80px' })
 
   return (
-    <section className="py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto" aria-labelledby="features-title">
+    <section className="py-16 sm:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto" aria-labelledby="features-title">
       <motion.div
         ref={ref}
         initial={{ opacity: 0, y: 24 }}

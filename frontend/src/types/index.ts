@@ -72,4 +72,70 @@ export interface AnalysisState {
   error?: string;
 }
 
-export type AppView = 'landing' | 'analyze';
+export type AppView = 'landing' | 'analyze' | 'image';
+
+// ── Image check types ─────────────────────────────────────────────────────────
+
+export type ImageVerdict =
+  | 'Likely Authentic'
+  | 'Potentially Misleading'
+  | 'Likely False'
+  | 'Unverifiable'
+  | 'Satire Risk';
+
+export interface ManipulationSignal {
+  signal: string;
+  label: string;
+  description: string;
+  severity: 'high' | 'medium' | 'low';
+  fired: boolean;
+  weight: number;
+  category: string;
+}
+
+export interface ImageScore {
+  verdict_label: ImageVerdict;
+  overall_score: number;
+  band: CredibilityBand;
+  confidence: number;
+  reasoning: string;
+  safer_context: string;
+  extracted_text: string;
+  ocr_confidence: number;
+  ocr_language: string;
+  ocr_method: string;
+  extracted_claims: Array<{ id: string; text: string; entity?: string }>;
+  manipulation_signals: ManipulationSignal[];
+  signal_score: number;
+  evidence_summary: {
+    google_fact_check_reviews: Array<{ claim: string; verdict: string; publisher: string }>;
+    wikipedia_summaries: Array<{ entity: string; title: string }>;
+    gdelt_volume: number;
+  };
+}
+
+export type ImagePipelineStep =
+  | 'idle'
+  | 'preprocessing'
+  | 'ocr_running'
+  | 'ocr_complete'
+  | 'extracting'
+  | 'gathering'
+  | 'signals'
+  | 'synthesizing'
+  | 'complete'
+  | 'error';
+
+export interface ImageAnalysisState {
+  step: ImagePipelineStep;
+  ocrText?: string;
+  ocrConfidence?: number;
+  ocrLanguage?: string;
+  ocrMethod?: string;
+  claims: Array<{ id: string; text: string; entity?: string }>;
+  signals: ManipulationSignal[];
+  signalScore?: number;
+  imageScore?: ImageScore;
+  progress: number;
+  error?: string;
+}
