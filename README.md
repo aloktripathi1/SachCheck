@@ -1,62 +1,88 @@
 # SachCheck
 
-SachCheck is a claim-level credibility analysis app that extracts factual claims from an article (or raw text), gathers supporting evidence, and streams transparent reasoning back to the UI.
+**AI-powered, claim-level fact verification.** Paste an article URL or raw text — SachCheck extracts every factual claim, cross-references four independent sources in parallel, and streams transparent verdicts back in real time.
 
-## Tech stack
-
-- Backend: Python 3.12, FastAPI, Pydantic v2, SSE, Anthropic SDK, httpx, BeautifulSoup
-- Frontend: Vite, React 18, TypeScript, Tailwind CSS, Framer Motion
-- Streaming: Server-Sent Events from backend to frontend
-
-## Repository layout
-
-```text
-backend/
-  data/            # Domain trust indexes and source data
-  models/          # Pydantic schemas
-  pipeline/        # Extraction, evidence, scoring, synthesis
-  utils/           # Scraping and helpers
-  main.py          # FastAPI app entrypoint
-frontend/
-  src/             # React app
-```
+---
 
 ## How it works
 
-1. User submits an article URL or raw text.
-2. Backend extracts atomic claims and named entities.
-3. Evidence is gathered from multiple external sources in parallel.
-4. A heuristic score is computed.
-5. Final synthesis returns verdict + rationale.
-6. Progress is streamed as SSE events to the frontend.
-
-## API overview
-
-### `POST /check`
-
-Request:
-
-```json
-{ "input": "https://example.com/article or pasted text" }
+```
+Article / URL
+     │
+     ▼
+┌─────────────────────┐
+│  Claude Haiku       │  Extracts atomic claims + named entities
+└──────────┬──────────┘
+           │  parallel evidence gathering
+     ┌─────┴──────┬──────────────┬──────────────┐
+     ▼            ▼              ▼               ▼
+Google FC    Wikipedia       GDELT         ClaimBuster
+     └─────┬──────┴──────────────┴──────────────┘
+           │  heuristic scoring
+           ▼
+┌─────────────────────┐
+│  Claude Sonnet      │  Synthesises verdict + rationale
+└──────────┬──────────┘
+           │  SSE stream
+           ▼
+      React UI
 ```
 
-Response:
+Each step is streamed as an SSE event so the UI updates progressively — no polling, no waiting for the full pipeline to finish.
 
-```json
-{ "check_id": "<uuid>" }
+---
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.12, FastAPI, Pydantic v2, httpx, BeautifulSoup |
+| AI | Anthropic Claude (Haiku for extraction, Sonnet for synthesis) |
+| Evidence | Google Fact Check API, Wikipedia, GDELT, ClaimBuster |
+| Streaming | Server-Sent Events (SSE) |
+| Frontend | Vite, React 18, TypeScript, Tailwind CSS v3, Framer Motion |
+| Fonts | Space Grotesk (headings), Inter (body) |
+
+---
+
+## Repository layout
+
+```
+SachCheck/
+├── backend/
+│   ├── data/           # Domain trust indexes and source weights
+│   ├── models/         # Pydantic request/response schemas
+│   ├── pipeline/       # Extraction → evidence → scoring → synthesis
+│   ├── utils/          # URL scraping and shared helpers
+│   ├── main.py         # FastAPI app + SSE endpoints
+│   ├── requirements.txt
+│   └── .env.example
+├── frontend/
+│   ├── src/
+│   │   ├── components/ # UI components (ClaimCard, InputPanel, …)
+│   │   ├── hooks/      # useAnalysis (SSE), useRecentChecks
+│   │   ├── lib/        # api.ts, utils, mock data
+│   │   ├── pages/      # AnalyzePage, LandingPage
+│   │   └── types/      # Shared TypeScript types
+│   ├── index.html
+│   ├── package.json
+│   ├── tailwind.config.js
+│   ├── vite.config.ts
+│   └── .env.example
+├── .gitignore
+├── LICENSE
+└── README.md
 ```
 
-### `GET /check/{check_id}/stream`
-
-SSE events emitted by the backend:
-
-- `claim_extracted`
-- `source_results`
-- `verdict`
-- `error` (if any)
-- `done`
+---
 
 ## Local setup
+
+### Prerequisites
+
+- Python 3.12+
+- Node.js 20+
+- An [Anthropic API key](https://console.anthropic.com/)
 
 ### Backend
 
@@ -64,7 +90,7 @@ SSE events emitted by the backend:
 cd backend
 python -m venv .venv
 
-# Linux/macOS/WSL
+# Linux / macOS / WSL
 source .venv/bin/activate
 
 # Windows PowerShell
@@ -74,22 +100,24 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Set required variables in `backend/.env`:
+Edit `backend/.env` and fill in the required values:
 
-- `ANTHROPIC_API_KEY` (required)
-- `ANTHROPIC_EXTRACT_MODEL` (optional)
-- `ANTHROPIC_SYNTHESIS_MODEL` (optional)
-- `GOOGLE_FC_API_KEY` (optional)
-- `CLAIMBUSTER_API_KEY` (optional)
-- `FRONTEND_ORIGIN` (optional, for custom CORS origin)
+| Variable | Required | Description |
+|---|---|---|
+| `ANTHROPIC_API_KEY` | ✅ | Your Anthropic API key |
+| `ANTHROPIC_EXTRACT_MODEL` | optional | Defaults to `claude-haiku-4-5-20251001` |
+| `ANTHROPIC_SYNTHESIS_MODEL` | optional | Defaults to `claude-sonnet-4-6` |
+| `GOOGLE_FC_API_KEY` | optional | Enables Google Fact Check source |
+| `CLAIMBUSTER_API_KEY` | optional | Enables ClaimBuster source |
+| `FRONTEND_ORIGIN` | optional | CORS origin, default `http://localhost:5173` |
 
-Run backend:
+Start the backend:
 
 ```bash
 uvicorn main:app --host 127.0.0.1 --port 8000 --reload
 ```
 
-Health check:
+Verify it's up:
 
 ```bash
 curl http://127.0.0.1:8000/health
@@ -100,24 +128,63 @@ curl http://127.0.0.1:8000/health
 ```bash
 cd frontend
 npm install
+cp .env.example .env   # or create frontend/.env manually
 ```
 
-Create `frontend/.env` with:
+`frontend/.env`:
 
 ```env
-VITE_API_BASE_URL=http://127.0.0.1:8000
+VITE_API_URL=http://127.0.0.1:8000
 ```
 
-Run frontend:
+Start the dev server:
 
 ```bash
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`.
+Open [http://localhost:5173](http://localhost:5173).
+
+---
+
+## API reference
+
+### `POST /check`
+
+Submit an article for analysis.
+
+**Request**
+```json
+{ "input": "https://example.com/article  OR  pasted article text" }
+```
+
+**Response**
+```json
+{ "check_id": "550e8400-e29b-41d4-a716-446655440000" }
+```
+
+### `GET /check/{check_id}/stream`
+
+SSE stream of analysis events.
+
+| Event | Payload |
+|---|---|
+| `claim_extracted` | `{ id, text, entities }` |
+| `source_results` | `{ claim_id, sources: [...] }` |
+| `verdict` | `{ claim_id, verdict, rationale, score }` |
+| `done` | `{ article_score, signals_fired }` |
+| `error` | `{ message }` |
+
+---
 
 ## Notes
 
-- External source failures are isolated so one failing provider does not crash the entire run.
-- Check state is ephemeral and cleaned up by a background TTL reaper.
-- Do not commit `.env` files or local cache/build artifacts.
+- Evidence source failures are isolated — one failing provider never crashes the pipeline.
+- Check state is ephemeral; a background TTL reaper cleans up stale checks automatically.
+- Never commit `.env` files. The `.gitignore` tracks `.env.example` files only.
+
+---
+
+## License
+
+[MIT](LICENSE)
