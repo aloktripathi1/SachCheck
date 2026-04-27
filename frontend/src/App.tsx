@@ -3,18 +3,18 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { Header } from './components/Header'
 import { LandingPage } from './pages/LandingPage'
 import { AnalyzePage } from './pages/AnalyzePage'
+import { ImageCheckPage } from './pages/ImageCheckPage'
 import type { AppView } from './types'
 
 const pageVariants = {
   initial: { opacity: 0, y: 8 },
   animate: { opacity: 1, y: 0 },
-  exit: { opacity: 0, y: -8 },
+  exit:    { opacity: 0, y: -8 },
 }
 
 export default function App() {
   const [view, setView] = useState<AppView>('landing')
 
-  // Scroll to top on view change
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }, [view])
@@ -34,8 +34,10 @@ export default function App() {
         >
           {view === 'landing' ? (
             <LandingPage onNavigate={setView} />
-          ) : (
+          ) : view === 'analyze' ? (
             <AnalyzePage onNavigate={setView} />
+          ) : (
+            <ImageCheckPage onNavigate={setView} />
           )}
         </motion.div>
       </AnimatePresence>

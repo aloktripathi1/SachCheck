@@ -15,9 +15,14 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette import EventSourceResponse
 
+import io
+from fastapi import FastAPI, File, HTTPException, UploadFile
+
+from models.image_schemas import ImageCheckCreateResponse, ImageStreamEventType
 from models.schemas import CheckCreateResponse, CheckRequest, PipelineInput, StreamEventType
 from pipeline.evidence import gather_evidence
 from pipeline.extractor import extract_claims
+from pipeline.image_pipeline import run_image_pipeline
 from pipeline.scorer import score_article
 from pipeline.synthesizer import synthesize
 from utils.scraper import is_probable_url, scrape_url
@@ -64,6 +69,10 @@ class CheckState:
 
 
 check_states: dict[UUID, CheckState] = {}
+image_check_states: dict[UUID, CheckState] = {}
+
+_ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp", "image/gif", "image/bmp"}
+_MAX_IMAGE_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 async def _reap_stale_states() -> None:
@@ -73,8 +82,12 @@ async def _reap_stale_states() -> None:
         stale = [cid for cid, state in check_states.items() if now - state.created_at > _CHECK_TTL_SECONDS]
         for cid in stale:
             check_states.pop(cid, None)
-        if stale:
-            logger.info("Reaped %d stale check state(s)", len(stale))
+        img_stale = [cid for cid, state in image_check_states.items() if now - state.created_at > _CHECK_TTL_SECONDS]
+        for cid in img_stale:
+            image_check_states.pop(cid, None)
+        total = len(stale) + len(img_stale)
+        if total:
+            logger.info("Reaped %d stale check state(s)", total)
 
 
 @app.on_event("startup")
@@ -216,6 +229,60 @@ async def stream_check(check_id: UUID) -> EventSourceResponse:
                     break
         finally:
             check_states.pop(check_id, None)
+
+    return EventSourceResponse(event_generator())
+
+
+async def _publish_image(check_id: UUID, event: ImageStreamEventType, data: dict) -> None:
+    state = image_check_states.get(check_id)
+    if not state:
+        return
+    await state.queue.put({"event": event.value, "data": data})
+
+
+@app.post("/image-check", response_model=ImageCheckCreateResponse)
+async def create_image_check(file: UploadFile = File(...)) -> ImageCheckCreateResponse:
+    content_type = (file.content_type or "").lower()
+    if content_type not in _ALLOWED_IMAGE_TYPES:
+        raise HTTPException(status_code=415, detail=f"Unsupported image type: {content_type}")
+
+    image_bytes = await file.read()
+    if len(image_bytes) > _MAX_IMAGE_BYTES:
+        raise HTTPException(status_code=413, detail="Image too large (max 10 MB)")
+    if len(image_bytes) < 100:
+        raise HTTPException(status_code=400, detail="Image file appears to be empty")
+
+    check_id = uuid4()
+    state = CheckState()
+    image_check_states[check_id] = state
+
+    asyncio.create_task(
+        run_image_pipeline(
+            check_id=check_id,
+            image_bytes=image_bytes,
+            publish=_publish_image,
+            client=anthropic_client,
+        )
+    )
+
+    return ImageCheckCreateResponse(check_id=check_id)
+
+
+@app.get("/image-check/{check_id}/stream")
+async def stream_image_check(check_id: UUID) -> EventSourceResponse:
+    state = image_check_states.get(check_id)
+    if not state:
+        raise HTTPException(status_code=404, detail="Image check ID not found")
+
+    async def event_generator() -> Any:
+        try:
+            while True:
+                event = await state.queue.get()
+                yield {"event": event["event"], "data": json.dumps(event["data"])}
+                if event["event"] == ImageStreamEventType.DONE.value:
+                    break
+        finally:
+            image_check_states.pop(check_id, None)
 
     return EventSourceResponse(event_generator())
 
