@@ -50,7 +50,7 @@ export function HowItWorks() {
   const isInView = useInView(ref, { once: true, margin: '-100px' })
 
   return (
-    <section className="py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto" aria-labelledby="how-it-works-title">
+    <section className="py-16 sm:py-24 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto" aria-labelledby="how-it-works-title">
       <motion.div
         ref={ref}
         initial={{ opacity: 0, y: 30 }}
