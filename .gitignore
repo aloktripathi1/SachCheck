@@ -1,1 +1,17 @@
-node_modules/
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+backend/.venv/
+
+# Node
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
+
+# Env files
+backend/.env
+frontend/.env
+
+# Logs
+*.log
