@@ -2,10 +2,12 @@ import { useState, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
   Link2, FileText, Sparkles, X,
-  Clock, ArrowRight, RotateCcw, FlaskConical
+  Clock, ArrowRight, RotateCcw, FlaskConical, Trash2
 } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { MOCK_ARTICLE_TEXT } from '../lib/mockData'
+import type { RecentCheck } from '../hooks/useRecentChecks'
+import { timeAgo } from '../hooks/useRecentChecks'
 
 type InputMode = 'url' | 'text'
 
@@ -14,17 +16,18 @@ interface InputPanelProps {
   onReset: () => void
   isAnalyzing: boolean
   isComplete: boolean
+  recentChecks: RecentCheck[]
+  onClearRecent: () => void
 }
 
-const RECENT_CHECKS = [
-  { title: 'RBI Emergency Crypto Directive', score: 31, band: 'red' as const, time: '2m ago' },
-  { title: 'PM Modi climate summit speech', score: 78, band: 'green' as const, time: '1h ago' },
-  { title: 'ISRO Mars mission funding', score: 52, band: 'yellow' as const, time: '3h ago' },
-]
+const bandColors = {
+  green: '#10b981',
+  yellow: '#f59e0b',
+  red: '#ef4444',
+  insufficient: '#94a3b8',
+}
 
-const bandColors = { green: '#10b981', yellow: '#f59e0b', red: '#ef4444' }
-
-export function InputPanel({ onAnalyze, onReset, isAnalyzing, isComplete }: InputPanelProps) {
+export function InputPanel({ onAnalyze, onReset, isAnalyzing, isComplete, recentChecks, onClearRecent }: InputPanelProps) {
   const [mode, setMode] = useState<InputMode>('text')
   const [input, setInput] = useState('')
   const textareaRef = useRef<HTMLTextAreaElement>(null)
@@ -205,36 +208,66 @@ export function InputPanel({ onAnalyze, onReset, isAnalyzing, isComplete }: Inpu
 
       {/* Recent checks */}
       <div className="border-t border-white/[0.05] p-4">
-        <div className="flex items-center gap-1.5 mb-3">
-          <Clock size={11} className="text-slate-600" />
-          <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wider">Recent Checks</span>
-        </div>
-        <div className="space-y-1.5">
-          {RECENT_CHECKS.map((check, i) => (
-            <motion.button
-              key={i}
-              initial={{ opacity: 0, x: -4 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: i * 0.06 }}
-              className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/[0.04] text-left transition-colors group"
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-1.5">
+            <Clock size={11} className="text-slate-600" />
+            <span className="text-[11px] font-medium text-slate-600 uppercase tracking-wider">Recent Checks</span>
+          </div>
+          {recentChecks.length > 0 && (
+            <button
+              onClick={onClearRecent}
+              className="p-1 rounded text-slate-700 hover:text-slate-500 transition-colors"
+              aria-label="Clear recent checks"
+              title="Clear history"
             >
-              <div
-                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
-                style={{ backgroundColor: bandColors[check.band] }}
-              />
-              <span className="flex-1 text-xs text-slate-400 group-hover:text-slate-300 transition-colors truncate">
-                {check.title}
-              </span>
-              <span
-                className="text-xs font-bold flex-shrink-0"
-                style={{ color: bandColors[check.band] }}
-              >
-                {check.score}
-              </span>
-              <span className="text-[10px] text-slate-700 flex-shrink-0">{check.time}</span>
-            </motion.button>
-          ))}
+              <Trash2 size={11} />
+            </button>
+          )}
         </div>
+
+        <AnimatePresence initial={false}>
+          {recentChecks.length === 0 ? (
+            <motion.p
+              key="empty"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="text-[11px] text-slate-700 text-center py-3"
+            >
+              No checks yet — results will appear here
+            </motion.p>
+          ) : (
+            <div className="space-y-1">
+              {recentChecks.map((check, i) => (
+                <motion.div
+                  key={check.id}
+                  initial={{ opacity: 0, x: -6 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  exit={{ opacity: 0, x: 6 }}
+                  transition={{ delay: i * 0.04 }}
+                  className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg hover:bg-white/[0.04] transition-colors group"
+                >
+                  <div
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                    style={{ backgroundColor: bandColors[check.band] }}
+                  />
+                  <span className="flex-1 text-xs text-slate-400 group-hover:text-slate-300 transition-colors truncate min-w-0">
+                    {check.title}
+                  </span>
+                  <span
+                    className="text-xs font-bold tabular-nums flex-shrink-0"
+                    style={{ color: bandColors[check.band] }}
+                  >
+                    {check.score}
+                  </span>
+                  <span className="text-[10px] text-slate-700 flex-shrink-0 w-12 text-right">
+                    {timeAgo(check.timestamp)}
+                  </span>
+                </motion.div>
+              ))}
+            </div>
+          )}
+        </AnimatePresence>
       </div>
     </div>
   )
