@@ -1,11 +1,25 @@
+# ── Web framework ──────────────────────────────────────────────────────────────
 fastapi==0.115.8
 uvicorn[standard]==0.34.0
 sse-starlette==2.2.1
-httpx==0.28.1
-anthropic==0.49.0
-pydantic==2.10.6
-python-dotenv==1.0.1
-beautifulsoup4==4.13.3
-Pillow==10.4.0
 python-multipart==0.0.20
+
+# ── HTTP & scraping ────────────────────────────────────────────────────────────
+httpx==0.28.1
+beautifulsoup4==4.13.3
+
+# ── AI ────────────────────────────────────────────────────────────────────────
+anthropic==0.49.0
+
+# ── Data validation ────────────────────────────────────────────────────────────
+pydantic==2.10.6
+
+# ── Config ────────────────────────────────────────────────────────────────────
+python-dotenv==1.0.1
+
+# ── Image processing & OCR ────────────────────────────────────────────────────
+# Pillow: image preprocessing (resize, contrast, sharpen, crop)
+Pillow==10.4.0
+# pytesseract: free OCR wrapper (requires system tesseract binary — see README)
 pytesseract==0.3.13
+# Claude Vision is used automatically as OCR fallback; no extra package needed.
