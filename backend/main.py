@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import json
 import logging
 import os
@@ -11,12 +12,9 @@ from uuid import UUID, uuid4
 
 from anthropic import AsyncAnthropic
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from sse_starlette import EventSourceResponse
-
-import io
-from fastapi import FastAPI, File, HTTPException, UploadFile
 
 from models.image_schemas import ImageCheckCreateResponse, ImageStreamEventType
 from models.schemas import CheckCreateResponse, CheckRequest, PipelineInput, StreamEventType
@@ -40,20 +38,25 @@ logger = logging.getLogger("sachcheck")
 app = FastAPI(title="SachCheck API", version="1.0.0")
 anthropic_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-_FRONTEND_ORIGINS = [
+# Build allowed-origins list.
+# FRONTEND_ORIGINS env var accepts comma-separated URLs so multiple
+# Vercel preview URLs can be added without redeploying.
+_origins: list[str] = [
     "http://localhost:5173",
     "http://localhost:5174",
     "http://127.0.0.1:5173",
     "http://127.0.0.1:5174",
 ]
-_extra_origin = os.getenv("FRONTEND_ORIGIN", "").strip()
-if _extra_origin:
-    _FRONTEND_ORIGINS.append(_extra_origin)
+for _raw in os.getenv("FRONTEND_ORIGINS", os.getenv("FRONTEND_ORIGIN", "")).split(","):
+    _o = _raw.strip().rstrip("/")
+    if _o:
+        _origins.append(_o)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_FRONTEND_ORIGINS,
-    allow_credentials=True,
+    allow_origins=_origins,
+    allow_origin_regex=r"https://.*\.vercel\.app",   # covers all Vercel preview URLs
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
