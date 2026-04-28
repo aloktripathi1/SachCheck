@@ -38,24 +38,9 @@ logger = logging.getLogger("sachcheck")
 app = FastAPI(title="SachCheck API", version="1.0.0")
 anthropic_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-# Build allowed-origins list.
-# FRONTEND_ORIGINS env var accepts comma-separated URLs so multiple
-# Vercel preview URLs can be added without redeploying.
-_origins: list[str] = [
-    "http://localhost:5173",
-    "http://localhost:5174",
-    "http://127.0.0.1:5173",
-    "http://127.0.0.1:5174",
-]
-for _raw in os.getenv("FRONTEND_ORIGINS", os.getenv("FRONTEND_ORIGIN", "")).split(","):
-    _o = _raw.strip().rstrip("/")
-    if _o:
-        _origins.append(_o)
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=_origins,
-    allow_origin_regex=r"https://.*\.vercel\.app",   # covers all Vercel preview URLs
+    allow_origins=["*"],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
