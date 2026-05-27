@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import type { AnalysisState, Claim, VerdictType, ArticleScore, EvidenceSource, HeuristicSignal } from '../types'
+import type { AnalysisState, Claim, ClaimType, EntityTag, VerdictType, ArticleScore, EvidenceSource, HeuristicSignal } from '../types'
 import { createCheck, openStream } from '../lib/api'
 
 const INITIAL_STATE: AnalysisState = {
@@ -124,12 +124,28 @@ export function useAnalysis() {
     const es = openStream(checkId)
     esRef.current = es
 
-    // One event per extracted claim (Claude Haiku phase)
+    // One event per check-worthy extracted claim (Claude Haiku phase)
     es.addEventListener('claim_extracted', (e: Event) => {
       const { claim } = JSON.parse((e as MessageEvent).data) as {
-        claim: { id: string; text: string; entity?: string }
+        claim: {
+          id: string
+          text: string
+          entity?: string
+          entities?: EntityTag[]
+          claim_type?: ClaimType
+          check_worthy?: boolean
+          reason_if_not?: string
+        }
       }
-      const skeleton: Claim = { id: claim.id, text: claim.text, entity: claim.entity ?? undefined }
+      const skeleton: Claim = {
+        id: claim.id,
+        text: claim.text,
+        entity: claim.entity ?? undefined,
+        entities: claim.entities ?? undefined,
+        claim_type: claim.claim_type ?? undefined,
+        check_worthy: claim.check_worthy ?? true,
+        reason_if_not: claim.reason_if_not ?? undefined,
+      }
       claimsRef.current = [...claimsRef.current, skeleton]
       setState(s => ({
         ...s,
@@ -164,8 +180,11 @@ export function useAnalysis() {
 
     // Single event with complete verdicts for all claims + article score
     es.addEventListener('verdict', (e: Event) => {
-      const { article_verdict } = JSON.parse((e as MessageEvent).data) as {
+      const { article_verdict, claims_found, claims_verified, claims_skipped } = JSON.parse((e as MessageEvent).data) as {
         article_verdict: BackendArticleVerdict
+        claims_found?: number
+        claims_verified?: number
+        claims_skipped?: number
       }
 
       const verdictMap = new Map(article_verdict.claim_verdicts.map(cv => [cv.claim_id, cv]))
@@ -189,10 +208,14 @@ export function useAnalysis() {
       })
 
       claimsRef.current = updatedClaims
+      const articleScore = buildArticleScore(article_verdict)
+      if (claims_found   != null) articleScore.claimsFound    = claims_found
+      if (claims_verified != null) articleScore.claimsVerified = claims_verified
+      if (claims_skipped  != null) articleScore.claimsSkipped  = claims_skipped
       setState(s => ({
         ...s,
         claims:       updatedClaims,
-        articleScore: buildArticleScore(article_verdict),
+        articleScore,
         progress:     97,
       }))
     })

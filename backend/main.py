@@ -102,7 +102,10 @@ async def _run_pipeline(check_id: UUID, pipeline_input: PipelineInput) -> None:
             await _publish(
                 check_id,
                 StreamEventType.CLAIM_EXTRACTED,
-                {"claim": claim.model_dump(), "log": f"Extracted {claim.id}"},
+                {
+                    "claim": claim.model_dump(mode="json"),
+                    "log": f"Extracted {claim.id}",
+                },
             )
 
         evidence = await gather_evidence(
@@ -150,6 +153,9 @@ async def _run_pipeline(check_id: UUID, pipeline_input: PipelineInput) -> None:
             StreamEventType.VERDICT,
             {
                 "article_verdict": verdict.model_dump(mode="json"),
+                "claims_found": len(extraction.claims) + len(extraction.skipped_claims),
+                "claims_verified": len(extraction.claims),
+                "claims_skipped": len(extraction.skipped_claims),
                 "disclaimer": (
                     "This is an automated heuristic credibility estimate. It is not a determination of truth. "
                     "Always consult primary sources and the cited fact-checks below."
