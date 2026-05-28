@@ -108,7 +108,6 @@ export function PipelineVisualizer({ step, progress, claimCount }: PipelineVisua
             const status = getStepStatus(s.key, step)
             const Icon = s.icon
             const isLast = idx === steps.length - 1
-            const nextStatus = !isLast ? getStepStatus(steps[idx + 1].key, step) : null
 
             return (
               <div key={s.key} className="flex items-center flex-1">
