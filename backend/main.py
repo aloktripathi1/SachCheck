@@ -21,6 +21,7 @@ from models.schemas import CheckCreateResponse, CheckRequest, PipelineInput, Str
 from pipeline.evidence import gather_evidence, is_evidence_sufficient
 from pipeline.extractor import extract_claims
 from pipeline.image_pipeline import run_image_pipeline
+from pipeline.nli_scorer import batch_score_passages, compute_verdict_band
 from pipeline.scorer import score_article
 from pipeline.synthesizer import synthesize
 from utils.scraper import is_probable_url, scrape_url
@@ -163,12 +164,56 @@ async def _run_pipeline(check_id: UUID, pipeline_input: PipelineInput) -> None:
             evidence=evidence,
         )
 
+        # ── NLI scoring: score all evidence passages against each claim ──────
+        tier1_all_empty = (
+            len(evidence.google_fact_check.reviews) == 0
+            and not evidence.wikipedia
+            and evidence.gdelt.volume == 0
+        )
+
+        # Collect all passage texts once; reuse across claims
+        from pipeline.synthesizer import _extract_passages
+        all_passages = _extract_passages(evidence)
+        passage_texts = [p for p, _ in all_passages]
+
+        nli_results: dict = {}
+        for claim in extraction.claims:
+            try:
+                scores = await batch_score_passages(claim.text, passage_texts)
+                max_support = max((s.entailment for s in scores), default=0.0)
+                max_refute  = max((s.contradiction for s in scores), default=0.0)
+                n_supporting    = sum(1 for s in scores if s.stance == "supports")
+                n_contradicting = sum(1 for s in scores if s.stance == "contradicts")
+                band = compute_verdict_band(
+                    max_support=max_support,
+                    max_refute=max_refute,
+                    n_supporting=n_supporting,
+                    n_contradicting=n_contradicting,
+                    tier1_all_empty=tier1_all_empty,
+                )
+                nli_results[claim.id] = (scores, band)
+                await _publish(
+                    check_id,
+                    StreamEventType.NLI_SCORED,
+                    {
+                        "claim_id": claim.id,
+                        "supporting": n_supporting,
+                        "contradicting": n_contradicting,
+                        "neutral": len(scores) - n_supporting - n_contradicting,
+                        "verdict_band": band.value,
+                    },
+                )
+            except Exception:
+                logger.exception("NLI scoring failed for claim %s", claim.id)
+                nli_results[claim.id] = ([], None)
+
         verdict, markdown = await synthesize(
             anthropic_client,
             claims=extraction.claims,
             evidence=evidence,
             score=score,
             model=os.getenv("ANTHROPIC_SYNTHESIS_MODEL", "claude-sonnet-4-6"),
+            nli_results=nli_results if nli_results else None,
         )
 
         for token in markdown.split(" "):
