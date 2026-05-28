@@ -102,102 +102,150 @@ export function PipelineVisualizer({ step, progress, claimCount }: PipelineVisua
           <span className="text-xs text-slate-500 tabular-nums">{Math.round(progress)}%</span>
         </div>
 
-        {/* Pipeline steps */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {/* Pipeline stepper */}
+        <div className="hidden md:flex items-center justify-between">
           {steps.map((s, idx) => {
             const status = getStepStatus(s.key, step)
             const Icon = s.icon
+            const isLast = idx === steps.length - 1
 
             return (
-              <div key={s.key} className="relative">
-                {/* Connector line (not on last) */}
-                {idx < steps.length - 1 && (
-                  <div className="hidden md:block absolute top-5 left-[calc(100%-8px)] right-0 h-px z-10 overflow-hidden w-full">
-                    <div className="h-px bg-white/8 w-[calc(100%+16px)] relative">
-                      <AnimatePresence>
-                        {status === 'done' && (
-                          <motion.div
-                            initial={{ scaleX: 0 }}
-                            animate={{ scaleX: 1 }}
-                            exit={{ scaleX: 0 }}
-                            style={{ originX: 0, backgroundColor: s.color }}
-                            className="absolute inset-0 h-full"
-                          />
-                        )}
-                      </AnimatePresence>
-                    </div>
-                  </div>
-                )}
-
+              <div key={s.key} className="flex items-center flex-1">
+                {/* Step node */}
                 <motion.div
-                  initial={{ opacity: 0, scale: 0.9 }}
+                  initial={{ opacity: 0, scale: 0.85 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: idx * 0.08 }}
-                  className={cn(
-                    'flex flex-col items-center text-center p-3 rounded-xl border transition-all duration-300',
-                    status === 'active' && 'border-white/15 bg-white/[0.04]',
-                    status === 'done' && 'border-white/8 bg-white/[0.02]',
-                    status === 'waiting' && 'border-white/5 bg-transparent',
-                  )}
+                  className="flex flex-col items-center flex-shrink-0"
                 >
-                  {/* Icon circle */}
+                  {/* Icon container */}
                   <div
-                    className="relative w-10 h-10 rounded-full flex items-center justify-center mb-2 transition-all duration-300"
+                    className={cn(
+                      'relative w-11 h-11 rounded-xl flex items-center justify-center transition-all duration-300',
+                      status === 'active' && 'ring-1',
+                    )}
                     style={{
-                      backgroundColor: status === 'waiting' ? 'rgba(255,255,255,0.04)' : `${s.color}18`,
-                      border: `1px solid ${status === 'waiting' ? 'rgba(255,255,255,0.06)' : `${s.color}40`}`,
-                      boxShadow: status === 'active' ? `0 0 16px ${s.color}30` : 'none',
+                      backgroundColor: status === 'waiting' ? 'rgba(255,255,255,0.03)' : `${s.color}15`,
+                      border: `1px solid ${status === 'waiting' ? 'rgba(255,255,255,0.07)' : `${s.color}35`}`,
+                      boxShadow: status === 'active' ? `0 0 18px ${s.color}25` : 'none',
+                      ...(status === 'active' ? { ['--tw-ring-color' as string]: `${s.color}30` } : {}),
                     }}
                   >
                     {status === 'done' ? (
-                      <CheckCircle2 size={18} style={{ color: s.color }} />
+                      <CheckCircle2 size={17} style={{ color: s.color }} />
                     ) : status === 'active' ? (
-                      <Loader2 size={18} style={{ color: s.color }} className="animate-spin" />
+                      <Loader2 size={17} style={{ color: s.color }} className="animate-spin" />
                     ) : (
-                      <Icon size={18} className="text-slate-600" />
+                      <Icon size={17} className="text-slate-600" />
                     )}
                     {status === 'active' && (
                       <motion.div
-                        className="absolute inset-0 rounded-full"
-                        style={{ border: `1px solid ${s.color}` }}
-                        animate={{ scale: [1, 1.4, 1], opacity: [0.6, 0, 0.6] }}
-                        transition={{ duration: 2, repeat: Infinity }}
+                        className="absolute inset-0 rounded-xl"
+                        style={{ border: `1px solid ${s.color}50` }}
+                        animate={{ scale: [1, 1.35, 1], opacity: [0.5, 0, 0.5] }}
+                        transition={{ duration: 2.2, repeat: Infinity }}
                       />
                     )}
                   </div>
 
-                  {/* Labels */}
-                  <span
-                    className={cn(
-                      'text-xs font-semibold leading-tight mb-0.5 transition-colors',
-                      status === 'active' ? 'text-white' : status === 'done' ? 'text-slate-300' : 'text-slate-600'
-                    )}
-                  >
-                    {s.label}
-                  </span>
-                  <span className="text-[9px] text-slate-600 leading-tight">{s.sublabel}</span>
-
-                  {/* Status indicator */}
-                  {status === 'active' && (
-                    <motion.span
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
-                      className="mt-1.5 text-[9px] font-medium tracking-wide"
-                      style={{ color: s.color }}
-                    >
-                      Processing…
-                    </motion.span>
-                  )}
-                  {status === 'done' && (
-                    <span className="mt-1.5 text-[9px] text-slate-600">{s.latency}</span>
-                  )}
-                  {status === 'waiting' && (
-                    <span className="mt-1.5 text-[9px] text-slate-700 flex items-center gap-0.5">
-                      <Clock size={8} /> {s.latency}
+                  {/* Label below icon */}
+                  <div className="mt-2 text-center">
+                    <span className={cn(
+                      'block text-[10px] font-semibold leading-tight transition-colors',
+                      status === 'active' ? 'text-white' : status === 'done' ? 'text-slate-400' : 'text-slate-600'
+                    )}>
+                      {s.label}
                     </span>
-                  )}
+                    <span className="block text-[9px] text-slate-700 mt-0.5">{s.sublabel}</span>
+                    {status === 'active' && (
+                      <motion.span
+                        initial={{ opacity: 0 }} animate={{ opacity: 1 }}
+                        className="block text-[9px] font-medium mt-0.5"
+                        style={{ color: s.color }}
+                      >Processing…</motion.span>
+                    )}
+                    {status === 'done' && (
+                      <span className="block text-[9px] text-slate-700 mt-0.5">{s.latency}</span>
+                    )}
+                    {status === 'waiting' && (
+                      <span className="block text-[9px] text-slate-800 mt-0.5 flex items-center justify-center gap-0.5">
+                        <Clock size={7} />{s.latency}
+                      </span>
+                    )}
+                  </div>
                 </motion.div>
+
+                {/* Connector segment — only between steps, never after last */}
+                {!isLast && (
+                  <div className="flex-1 mx-3 mb-7 h-px relative overflow-hidden">
+                    {/* Dim track */}
+                    <div className="absolute inset-0 h-px"
+                      style={{ background: `linear-gradient(to right, ${s.color}20, ${steps[idx+1].color}20)` }}
+                    />
+                    {/* Filled when done */}
+                    {status === 'done' && (
+                      <motion.div
+                        className="absolute inset-0 h-px"
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        style={{ originX: 0, background: `linear-gradient(to right, ${s.color}70, ${steps[idx+1].color}70)` }}
+                        transition={{ duration: 0.5 }}
+                      />
+                    )}
+                    {/* Shimmer on active */}
+                    {status === 'active' && (
+                      <>
+                        <div className="absolute inset-0 h-px"
+                          style={{ background: `linear-gradient(to right, ${s.color}35, ${steps[idx+1].color}35)` }}
+                        />
+                        <motion.div
+                          className="absolute top-0 bottom-0 w-1/3 h-px"
+                          style={{ background: `linear-gradient(to right, transparent, ${s.color}90, transparent)` }}
+                          animate={{ x: ['-33%', '300%'] }}
+                          transition={{ duration: 1.8, repeat: Infinity, ease: 'linear' }}
+                        />
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
+            )
+          })}
+        </div>
+
+        {/* Mobile: 2x2 grid, no connectors */}
+        <div className="md:hidden grid grid-cols-2 gap-3">
+          {steps.map((s, idx) => {
+            const status = getStepStatus(s.key, step)
+            const Icon = s.icon
+            return (
+              <motion.div
+                key={s.key}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: idx * 0.08 }}
+                className={cn(
+                  'flex flex-col items-center text-center p-3 rounded-xl border transition-all duration-300',
+                  status === 'active' && 'border-white/15 bg-white/[0.04]',
+                  status === 'done' && 'border-white/8 bg-white/[0.02]',
+                  status === 'waiting' && 'border-white/5 bg-transparent',
+                )}
+              >
+                <div className="w-9 h-9 rounded-full flex items-center justify-center mb-2"
+                  style={{
+                    backgroundColor: status === 'waiting' ? 'rgba(255,255,255,0.04)' : `${s.color}18`,
+                    border: `1px solid ${status === 'waiting' ? 'rgba(255,255,255,0.06)' : `${s.color}40`}`,
+                  }}
+                >
+                  {status === 'done' ? <CheckCircle2 size={16} style={{ color: s.color }} />
+                    : status === 'active' ? <Loader2 size={16} style={{ color: s.color }} className="animate-spin" />
+                    : <Icon size={16} className="text-slate-600" />}
+                </div>
+                <span className={cn('text-[10px] font-semibold',
+                  status === 'active' ? 'text-white' : status === 'done' ? 'text-slate-300' : 'text-slate-600'
+                )}>{s.label}</span>
+                <span className="text-[9px] text-slate-700">{s.sublabel}</span>
+              </motion.div>
             )
           })}
         </div>
