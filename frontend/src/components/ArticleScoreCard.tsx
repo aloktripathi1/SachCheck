@@ -122,6 +122,37 @@ export function ArticleScoreCard({ score }: ArticleScoreCardProps) {
               )
             })}
         </div>
+
+        {/* NLI 4-band summary */}
+        {score.nliBreakdown && (
+          <div className="mt-4 pt-3 border-t border-white/[0.05]">
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider font-semibold mb-2">
+              NLI Evidence Bands
+            </p>
+            <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+              {score.nliBreakdown.supported > 0 && (
+                <span className="text-emerald-400">
+                  {score.nliBreakdown.supported} Supported
+                </span>
+              )}
+              {score.nliBreakdown.refuted > 0 && (
+                <span className="text-red-400">
+                  {score.nliBreakdown.refuted} Refuted
+                </span>
+              )}
+              {score.nliBreakdown.mixed > 0 && (
+                <span className="text-amber-400">
+                  {score.nliBreakdown.mixed} Mixed
+                </span>
+              )}
+              {score.nliBreakdown.insufficient > 0 && (
+                <span className="text-slate-500">
+                  {score.nliBreakdown.insufficient} Insufficient
+                </span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Heuristic Signals */}
