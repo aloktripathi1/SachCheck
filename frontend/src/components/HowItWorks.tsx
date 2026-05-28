@@ -71,33 +71,25 @@ export function HowItWorks() {
       </motion.div>
 
       {/* Desktop horizontal timeline */}
-      <div className="hidden lg:block relative">
-        {/* Connector line */}
-        <div className="absolute top-10 left-[12.5%] right-[12.5%] h-px bg-white/[0.06]">
-          <motion.div
-            initial={{ scaleX: 0 }}
-            animate={isInView ? { scaleX: 1 } : {}}
-            transition={{ duration: 1.2, delay: 0.4, ease: 'easeOut' }}
-            className="h-full bg-gradient-to-r from-blue-500 via-purple-500 via-amber-500 to-emerald-500 origin-left"
-          />
-        </div>
-
-        <div className="grid grid-cols-4 gap-6">
-          {steps.map((step, idx) => (
-            <motion.div
-              key={step.number}
-              initial={{ opacity: 0, y: 30 }}
-              animate={isInView ? { opacity: 1, y: 0 } : {}}
-              transition={{ delay: 0.2 + idx * 0.15, duration: 0.6 }}
-              className="flex flex-col items-center text-center"
-            >
-              {/* Icon circle */}
+      <div className="hidden lg:flex items-start gap-0">
+        {steps.map((step, idx) => {
+          const isLast = idx === steps.length - 1
+          return (
+            <div key={step.number} className="flex items-start flex-1">
+              {/* Step column */}
+              <motion.div
+                initial={{ opacity: 0, y: 30 }}
+                animate={isInView ? { opacity: 1, y: 0 } : {}}
+                transition={{ delay: 0.2 + idx * 0.15, duration: 0.6 }}
+                className="flex flex-col items-center text-center w-full"
+              >
+              {/* Icon box */}
               <div
                 className="relative w-20 h-20 rounded-2xl flex items-center justify-center mb-6 z-10"
                 style={{
                   background: `linear-gradient(135deg, ${step.color}18, ${step.color}08)`,
                   border: `1px solid ${step.color}30`,
-                  boxShadow: `0 0 30px ${step.color}15`,
+                  boxShadow: `0 0 30px ${step.color}12`,
                 }}
               >
                 <step.icon size={28} style={{ color: step.color }} />
@@ -129,9 +121,26 @@ export function HowItWorks() {
                   <span className="text-[10px] font-semibold" style={{ color: step.color }}>{step.latency}</span>
                 </div>
               </div>
-            </motion.div>
-          ))}
-        </div>
+              </motion.div>
+
+              {/* Connector segment between this step and the next — only between steps */}
+              {!isLast && (
+                <div className="flex-shrink-0 w-8 mt-9 mx-1 h-px relative overflow-hidden self-start">
+                  <div className="absolute inset-0"
+                    style={{ background: `linear-gradient(to right, ${step.color}25, ${steps[idx+1].color}25)` }}
+                  />
+                  <motion.div
+                    className="absolute inset-0"
+                    initial={{ scaleX: 0 }}
+                    animate={isInView ? { scaleX: 1 } : {}}
+                    transition={{ duration: 0.6, delay: 0.4 + idx * 0.2, ease: 'easeOut' }}
+                    style={{ originX: 0, background: `linear-gradient(to right, ${step.color}55, ${steps[idx+1].color}55)` }}
+                  />
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
       {/* Mobile stacked layout */}
