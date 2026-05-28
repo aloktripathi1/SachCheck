@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react'
-import type { AnalysisState, Claim, ClaimType, EntityTag, VerdictType, ArticleScore, EvidenceSource, HeuristicSignal } from '../types'
+import type { AnalysisState, Claim, ClaimType, EntityTag, VerdictBand, VerdictType, ArticleScore, EvidenceSource, HeuristicSignal } from '../types'
 import { createCheck, openStream } from '../lib/api'
 
 const INITIAL_STATE: AnalysisState = {
@@ -46,6 +46,11 @@ interface BackendClaimVerdict {
   confidence: number
   explanation: string
   sources: BackendSourceRef[]
+  verdict_band?: VerdictBand
+  nli_support_score?: number
+  nli_refute_score?: number
+  supporting_count?: number
+  contradicting_count?: number
 }
 
 interface BackendArticleVerdict {
@@ -101,6 +106,11 @@ export function useAnalysis() {
   const claimsRef  = useRef<Claim[]>([])
   const tokenCount = useRef(0)
 
+  const updateClaim = useCallback((claimId: string, patch: Partial<Claim>) => {
+    claimsRef.current = claimsRef.current.map(c => c.id === claimId ? { ...c, ...patch } : c)
+    setState(s => ({ ...s, claims: [...claimsRef.current] }))
+  }, [])
+
   const analyze = useCallback(async (input: string) => {
     esRef.current?.close()
     claimsRef.current  = []
@@ -155,6 +165,51 @@ export function useAnalysis() {
       }))
     })
 
+    // Branch 2: web search lifecycle
+    es.addEventListener('web_search_triggered', (e: Event) => {
+      const data = JSON.parse((e as MessageEvent).data) as { claim_id?: string }
+      if (data.claim_id) updateClaim(data.claim_id, { web_search_pending: true })
+    })
+
+    es.addEventListener('web_search_complete', (e: Event) => {
+      const data = JSON.parse((e as MessageEvent).data) as { claim_id?: string }
+      if (data.claim_id) updateClaim(data.claim_id, { web_search_pending: false, web_search_used: true })
+    })
+
+    // Branch 3: NLI stance scores per claim
+    es.addEventListener('nli_scored', (e: Event) => {
+      const data = JSON.parse((e as MessageEvent).data) as {
+        claim_id: string
+        supporting: number
+        contradicting: number
+        verdict_band: VerdictBand
+      }
+      updateClaim(data.claim_id, {
+        supporting_count:   data.supporting,
+        contradicting_count: data.contradicting,
+        verdict_band:        data.verdict_band,
+      })
+      // Roll up nliBreakdown into articleScore if it already exists
+      setState(s => {
+        if (!s.articleScore) return s
+        const prev = s.articleScore.nliBreakdown ?? { supported: 0, refuted: 0, mixed: 0, insufficient: 0 }
+        const bandKey: Record<VerdictBand, keyof typeof prev> = {
+          SUPPORTED:             'supported',
+          REFUTED:               'refuted',
+          MIXED:                 'mixed',
+          INSUFFICIENT_EVIDENCE: 'insufficient',
+        }
+        const key = bandKey[data.verdict_band]
+        return {
+          ...s,
+          articleScore: {
+            ...s.articleScore,
+            nliBreakdown: { ...prev, [key]: prev[key] + 1 },
+          },
+        }
+      })
+    })
+
     // Fires once with source_health (evidence gathered), then many times with stream_token
     es.addEventListener('source_results', (e: Event) => {
       const data = JSON.parse((e as MessageEvent).data) as {
@@ -194,9 +249,14 @@ export function useAnalysis() {
         if (!cv) return claim
         return {
           ...claim,
-          verdict:     cv.verdict,
-          confidence:  cv.confidence,
-          explanation: cv.explanation,
+          verdict:             cv.verdict,
+          confidence:          cv.confidence,
+          explanation:         cv.explanation,
+          verdict_band:        cv.verdict_band ?? claim.verdict_band,
+          supporting_count:    cv.supporting_count ?? claim.supporting_count,
+          contradicting_count: cv.contradicting_count ?? claim.contradicting_count,
+          nli_support_score:   cv.nli_support_score,
+          nli_refute_score:    cv.nli_refute_score,
           sources: cv.sources.map((s): EvidenceSource => ({
             name:        s.publisher,
             url:         String(s.url),
@@ -212,6 +272,17 @@ export function useAnalysis() {
       if (claims_found   != null) articleScore.claimsFound    = claims_found
       if (claims_verified != null) articleScore.claimsVerified = claims_verified
       if (claims_skipped  != null) articleScore.claimsSkipped  = claims_skipped
+
+      // Build nliBreakdown from verdict-level band data (authoritative final values)
+      const nliBreakdown = { supported: 0, refuted: 0, mixed: 0, insufficient: 0 }
+      for (const cv of article_verdict.claim_verdicts) {
+        if (cv.verdict_band === 'SUPPORTED')             nliBreakdown.supported++
+        else if (cv.verdict_band === 'REFUTED')          nliBreakdown.refuted++
+        else if (cv.verdict_band === 'MIXED')            nliBreakdown.mixed++
+        else if (cv.verdict_band === 'INSUFFICIENT_EVIDENCE') nliBreakdown.insufficient++
+      }
+      const hasAnyBand = Object.values(nliBreakdown).some(v => v > 0)
+      if (hasAnyBand) articleScore.nliBreakdown = nliBreakdown
       setState(s => ({
         ...s,
         claims:       updatedClaims,
