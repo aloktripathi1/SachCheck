@@ -1,7 +1,7 @@
 import { CheckCircle2, XCircle, AlertTriangle, HelpCircle, TrendingUp, TrendingDown } from 'lucide-react'
 import { cn } from '../lib/utils'
 import { verdictConfig } from '../lib/utils'
-import type { VerdictType } from '../types'
+import type { VerdictType, VerdictBand } from '../types'
 
 interface VerdictBadgeProps {
   verdict: VerdictType
@@ -41,6 +41,40 @@ export function VerdictBadge({ verdict, size = 'md', showIcon = true }: VerdictB
       }}
     >
       {showIcon && icons[verdict]}
+      {config.label}
+    </span>
+  )
+}
+
+// ── NLI 4-band verdict badge ──────────────────────────────────────────────────
+
+interface NLIBandConfig {
+  label: string
+  icon: string
+  className: string
+}
+
+const nliBandConfig: Record<VerdictBand, NLIBandConfig> = {
+  SUPPORTED:            { label: 'Supported',           icon: '✓', className: 'bg-green-500/10 text-green-400 border-green-500/30' },
+  REFUTED:              { label: 'Refuted',              icon: '✗', className: 'bg-red-500/10 text-red-400 border-red-500/30' },
+  MIXED:                { label: 'Mixed',                icon: '~', className: 'bg-amber-500/10 text-amber-400 border-amber-500/30' },
+  INSUFFICIENT_EVIDENCE:{ label: 'Not enough evidence',  icon: '?', className: 'bg-slate-500/10 text-slate-400 border-slate-500/30' },
+}
+
+interface NLIVerdictBadgeProps {
+  band: VerdictBand
+  size?: 'sm' | 'md'
+}
+
+export function NLIVerdictBadge({ band, size = 'md' }: NLIVerdictBadgeProps) {
+  const config = nliBandConfig[band]
+  const sz = size === 'sm'
+    ? 'text-[9px] px-1.5 py-0.5 gap-1'
+    : 'text-[10px] px-2.5 py-1 gap-1.5'
+
+  return (
+    <span className={cn('inline-flex items-center font-semibold rounded-full border', sz, config.className)}>
+      <span className="font-bold">{config.icon}</span>
       {config.label}
     </span>
   )
