@@ -18,9 +18,10 @@ from sse_starlette import EventSourceResponse
 
 from models.image_schemas import ImageCheckCreateResponse, ImageStreamEventType
 from models.schemas import CheckCreateResponse, CheckRequest, PipelineInput, StreamEventType
-from pipeline.evidence import gather_evidence
+from pipeline.evidence import gather_evidence, is_evidence_sufficient
 from pipeline.extractor import extract_claims
 from pipeline.image_pipeline import run_image_pipeline
+from pipeline.nli_scorer import batch_score_passages, compute_verdict_band
 from pipeline.scorer import score_article
 from pipeline.synthesizer import synthesize
 from utils.scraper import is_probable_url, scrape_url
@@ -108,20 +109,50 @@ async def _run_pipeline(check_id: UUID, pipeline_input: PipelineInput) -> None:
                 },
             )
 
+        # Emit web_search_triggered before gather so the frontend can show it
+        # immediately if Tier-1 evidence is likely to be sparse. We fire it
+        # unconditionally here; the gate inside gather_evidence decides whether
+        # the search actually runs.
+        await _publish(
+            check_id,
+            StreamEventType.WEB_SEARCH_TRIGGERED,
+            {
+                "reason": "checking_tier1_sufficiency",
+                "log": "Starting evidence gathering; web search standby",
+            },
+        )
+
         evidence = await gather_evidence(
             query_text=pipeline_input.article_text[:500],
             entities=extraction.entities,
             claim_texts=[claim.text for claim in extraction.claims],
             google_api_key=os.getenv("GOOGLE_FC_API_KEY"),
             claimbuster_api_key=os.getenv("CLAIMBUSTER_API_KEY"),
+            google_cse_api_key=os.getenv("GOOGLE_CSE_API_KEY"),
+            google_cse_id=os.getenv("GOOGLE_CSE_ID"),
         )
+
+        web_search_fired = evidence.source_health.web_search != "skipped"
+        if web_search_fired:
+            sources_used = [r.source for r in evidence.web_results]
+            unique_sources = sorted(set(sources_used))
+            await _publish(
+                check_id,
+                StreamEventType.WEB_SEARCH_COMPLETE,
+                {
+                    "results_count": len(evidence.web_results),
+                    "sources": unique_sources,
+                    "log": f"Web search fallback returned {len(evidence.web_results)} result(s)",
+                },
+            )
 
         await _publish(
             check_id,
             StreamEventType.SOURCE_RESULTS,
             {
                 "source_health": evidence.source_health.model_dump(),
-                "log": "Evidence fetched from Google Fact Check, Wikipedia, GDELT, ClaimBuster",
+                "log": "Evidence fetched from Google Fact Check, Wikipedia, GDELT, ClaimBuster"
+                + (", web search" if web_search_fired else ""),
             },
         )
 
@@ -133,12 +164,56 @@ async def _run_pipeline(check_id: UUID, pipeline_input: PipelineInput) -> None:
             evidence=evidence,
         )
 
+        # ── NLI scoring: score all evidence passages against each claim ──────
+        tier1_all_empty = (
+            len(evidence.google_fact_check.reviews) == 0
+            and not evidence.wikipedia
+            and evidence.gdelt.volume == 0
+        )
+
+        # Collect all passage texts once; reuse across claims
+        from pipeline.synthesizer import _extract_passages
+        all_passages = _extract_passages(evidence)
+        passage_texts = [p for p, _ in all_passages]
+
+        nli_results: dict = {}
+        for claim in extraction.claims:
+            try:
+                scores = await batch_score_passages(claim.text, passage_texts)
+                max_support = max((s.entailment for s in scores), default=0.0)
+                max_refute  = max((s.contradiction for s in scores), default=0.0)
+                n_supporting    = sum(1 for s in scores if s.stance == "supports")
+                n_contradicting = sum(1 for s in scores if s.stance == "contradicts")
+                band = compute_verdict_band(
+                    max_support=max_support,
+                    max_refute=max_refute,
+                    n_supporting=n_supporting,
+                    n_contradicting=n_contradicting,
+                    tier1_all_empty=tier1_all_empty,
+                )
+                nli_results[claim.id] = (scores, band)
+                await _publish(
+                    check_id,
+                    StreamEventType.NLI_SCORED,
+                    {
+                        "claim_id": claim.id,
+                        "supporting": n_supporting,
+                        "contradicting": n_contradicting,
+                        "neutral": len(scores) - n_supporting - n_contradicting,
+                        "verdict_band": band.value,
+                    },
+                )
+            except Exception:
+                logger.exception("NLI scoring failed for claim %s", claim.id)
+                nli_results[claim.id] = ([], None)
+
         verdict, markdown = await synthesize(
             anthropic_client,
             claims=extraction.claims,
             evidence=evidence,
             score=score,
             model=os.getenv("ANTHROPIC_SYNTHESIS_MODEL", "claude-sonnet-4-6"),
+            nli_results=nli_results if nli_results else None,
         )
 
         for token in markdown.split(" "):

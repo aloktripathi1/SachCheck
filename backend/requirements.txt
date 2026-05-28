@@ -17,6 +17,17 @@ pydantic==2.10.6
 # ── Config ────────────────────────────────────────────────────────────────────
 python-dotenv==1.0.1
 
+# ── Testing ───────────────────────────────────────────────────────────────────
+# respx: mock httpx requests in tests (dev/test only)
+respx==0.23.1
+
+# ── NLI contradiction detection ───────────────────────────────────────────────
+# DeBERTa-v3 NLI model (MoritzLaurer/DeBERTa-v3-base-mnli-fever-anli)
+# Downloads ~300MB on first run, then cached by HuggingFace.
+# CPU-only torch is fine: pip install torch --index-url https://download.pytorch.org/whl/cpu
+transformers>=4.40.0
+torch>=2.2.0
+
 # ── Image processing & OCR ────────────────────────────────────────────────────
 # Pillow: image preprocessing (resize, contrast, sharpen, crop)
 Pillow==10.4.0

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import urlparse
 from uuid import UUID
 
 from pydantic import BaseModel, Field, HttpUrl
@@ -93,11 +94,49 @@ class ClaimBusterResult(BaseModel):
     message: str | None = None
 
 
+class WebSearchResult(BaseModel):
+    url: str
+    title: str
+    description: str
+    domain: str
+    tier: Literal["A", "B", "C"]
+    source: Literal["google_cse", "duckduckgo"]
+
+    @classmethod
+    def from_url(cls, url: str, title: str, description: str, source: Literal["google_cse", "duckduckgo"]) -> "WebSearchResult":
+        try:
+            domain = urlparse(url).netloc.lstrip("www.")
+        except Exception:
+            domain = ""
+        return cls(url=url, title=title, description=description, domain=domain, tier=_compute_tier(domain), source=source)
+
+
+_TIER_A_DOMAINS: frozenset[str] = frozenset({
+    "reuters.com", "apnews.com", "bbc.com", "theguardian.com",
+    "nytimes.com", "washingtonpost.com", "economist.com",
+    "nature.com", "science.org", "who.int", "cdc.gov", "nih.gov",
+})
+
+_TIER_B_KEYWORDS: frozenset[str] = frozenset({
+    "news", "post", "times", "herald", "tribune", "gazette",
+    "journal", "press", "wire", "daily", "report",
+})
+
+
+def _compute_tier(domain: str) -> Literal["A", "B", "C"]:
+    if domain in _TIER_A_DOMAINS:
+        return "A"
+    if any(kw in domain for kw in _TIER_B_KEYWORDS):
+        return "B"
+    return "C"
+
+
 class SourceHealth(BaseModel):
     google_fact_check: str
     wikipedia: str
     gdelt: str
     claimbuster: str
+    web_search: str = "skipped"
 
 
 class EvidenceBundle(BaseModel):
@@ -106,6 +145,22 @@ class EvidenceBundle(BaseModel):
     gdelt: GdeltResult
     claimbuster: ClaimBusterResult
     source_health: SourceHealth
+    web_results: list[WebSearchResult] = Field(default_factory=list)
+
+
+class NLIScore(BaseModel):
+    entailment: float = Field(ge=0.0, le=1.0)
+    contradiction: float = Field(ge=0.0, le=1.0)
+    neutral: float = Field(ge=0.0, le=1.0)
+    stance: Literal["supports", "contradicts", "neutral"]
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class VerdictBand(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    REFUTED = "REFUTED"
+    MIXED = "MIXED"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
 
 
 class HeuristicScore(BaseModel):
@@ -130,6 +185,12 @@ class ClaimVerdict(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     explanation: str
     sources: list[SourceRef]
+    # NLI fields — optional so existing code serialising ClaimVerdict still works
+    nli_support_score: float | None = None
+    nli_refute_score: float | None = None
+    verdict_band: VerdictBand | None = None
+    supporting_count: int | None = None
+    contradicting_count: int | None = None
 
 
 class ArticleBand(str, Enum):
@@ -175,6 +236,9 @@ class PipelineInput(BaseModel):
 class StreamEventType(str, Enum):
     CLAIM_EXTRACTED = "claim_extracted"
     SOURCE_RESULTS = "source_results"
+    WEB_SEARCH_TRIGGERED = "web_search_triggered"
+    WEB_SEARCH_COMPLETE = "web_search_complete"
+    NLI_SCORED = "nli_scored"
     VERDICT = "verdict"
     DONE = "done"
     ERROR = "error"

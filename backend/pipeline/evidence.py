@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import statistics
 from typing import Any
 
@@ -14,8 +15,12 @@ from models.schemas import (
     GoogleFactCheckResult,
     GoogleFactCheckReview,
     SourceHealth,
+    WebSearchResult,
     WikipediaSummary,
 )
+from pipeline.web_search import DuckDuckGoClient, GoogleCSEClient
+
+logger = logging.getLogger("sachcheck.evidence")
 
 
 async def _google_fact_check_search(query: str, api_key: str | None) -> tuple[GoogleFactCheckResult, str]:
@@ -187,12 +192,80 @@ async def _claimbuster_scores(claims: list[str], api_key: str | None) -> tuple[C
         return ClaimBusterResult(available=False, scores={}, message="ClaimBuster request failed"), "error"
 
 
+def is_evidence_sufficient(bundle: EvidenceBundle) -> bool:
+    """Return True when Tier-1 evidence is rich enough to skip the web search fallback.
+
+    Logic:
+    - If GDELT errored (service unavailable), don't count it as a missing signal —
+      require only 1 of the remaining 2 sources (FC or Wikipedia).
+    - If GDELT is available, require 2 of 3 signals.
+    - A Wikipedia result with a long summary (>200 chars) counts as a strong signal.
+    """
+    has_factcheck = len(bundle.google_fact_check.reviews) > 0
+    has_wiki = len(bundle.wikipedia) > 0
+    wiki_rich = any(len(w.summary) > 200 for w in bundle.wikipedia)
+    has_news_coverage = bundle.gdelt.volume > 3
+    gdelt_errored = bundle.source_health.gdelt == "error"
+
+    if gdelt_errored:
+        # GDELT unavailable — only 2 signals exist; need just 1 of them
+        return has_factcheck or wiki_rich
+    return sum([has_factcheck, has_wiki, has_news_coverage]) >= 2
+
+
+async def _web_search_fallback(
+    claim_texts: list[str],
+    entities: list[str],
+    google_cse_api_key: str | None,
+    google_cse_id: str | None,
+) -> tuple[list[WebSearchResult], str]:
+    """Run Google CSE + DuckDuckGo concurrently; return merged deduplicated results."""
+    query = " ".join(claim_texts[:1])  # use first claim as the primary query
+    primary_entity = entities[0] if entities else ""
+
+    cse_task = None
+    if google_cse_api_key and google_cse_id:
+        cse_client = GoogleCSEClient(api_key=google_cse_api_key, cse_id=google_cse_id)
+        cse_task = cse_client.search_claim(query, entities)
+    else:
+        logger.warning("GOOGLE_CSE_API_KEY or GOOGLE_CSE_ID not set — skipping Google CSE fallback")
+
+    ddg_client = DuckDuckGoClient()
+    ddg_task = ddg_client.search_claim(query)
+
+    tasks = [ddg_task]
+    if cse_task is not None:
+        tasks = [cse_task, ddg_task]
+
+    raw = await asyncio.gather(*tasks, return_exceptions=True)
+
+    seen: set[str] = set()
+    merged: list[WebSearchResult] = []
+    for batch in raw:
+        if isinstance(batch, list):
+            for r in batch:
+                if r.url not in seen:
+                    seen.add(r.url)
+                    merged.append(r)
+
+    sources_used = []
+    if cse_task is not None and not isinstance(raw[0], Exception):
+        sources_used.append("google_cse")
+    if not isinstance(raw[-1], Exception):
+        sources_used.append("duckduckgo")
+
+    health = "ok" if merged else "empty"
+    return merged, health
+
+
 async def gather_evidence(
     query_text: str,
     entities: list[str],
     claim_texts: list[str],
     google_api_key: str | None,
     claimbuster_api_key: str | None,
+    google_cse_api_key: str | None = None,
+    google_cse_id: str | None = None,
 ) -> EvidenceBundle:
     tasks = [
         _google_fact_check_search(query_text, google_api_key),
@@ -221,7 +294,7 @@ async def gather_evidence(
     if not isinstance(results[3], Exception):
         claimbuster_result, claimbuster_health = results[3]
 
-    return EvidenceBundle(
+    bundle = EvidenceBundle(
         google_fact_check=google_result,
         wikipedia=wiki_result,
         gdelt=gdelt_result,
@@ -231,5 +304,22 @@ async def gather_evidence(
             wikipedia=wiki_health,
             gdelt=gdelt_health,
             claimbuster=claimbuster_health,
+            web_search="skipped",
         ),
     )
+
+    if not is_evidence_sufficient(bundle):
+        try:
+            web_results, web_health = await _web_search_fallback(
+                claim_texts=claim_texts,
+                entities=entities,
+                google_cse_api_key=google_cse_api_key,
+                google_cse_id=google_cse_id,
+            )
+            bundle.web_results = web_results
+            bundle.source_health.web_search = web_health
+        except Exception:
+            logger.exception("Web search fallback failed unexpectedly")
+            bundle.source_health.web_search = "error"
+
+    return bundle
