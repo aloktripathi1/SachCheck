@@ -148,6 +148,21 @@ class EvidenceBundle(BaseModel):
     web_results: list[WebSearchResult] = Field(default_factory=list)
 
 
+class NLIScore(BaseModel):
+    entailment: float = Field(ge=0.0, le=1.0)
+    contradiction: float = Field(ge=0.0, le=1.0)
+    neutral: float = Field(ge=0.0, le=1.0)
+    stance: Literal["supports", "contradicts", "neutral"]
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class VerdictBand(str, Enum):
+    SUPPORTED = "SUPPORTED"
+    REFUTED = "REFUTED"
+    MIXED = "MIXED"
+    INSUFFICIENT_EVIDENCE = "INSUFFICIENT_EVIDENCE"
+
+
 class HeuristicScore(BaseModel):
     raw_score: int
     final_score: int = Field(ge=0, le=100)
@@ -170,6 +185,12 @@ class ClaimVerdict(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0)
     explanation: str
     sources: list[SourceRef]
+    # NLI fields — optional so existing code serialising ClaimVerdict still works
+    nli_support_score: float | None = None
+    nli_refute_score: float | None = None
+    verdict_band: VerdictBand | None = None
+    supporting_count: int | None = None
+    contradicting_count: int | None = None
 
 
 class ArticleBand(str, Enum):
@@ -217,6 +238,7 @@ class StreamEventType(str, Enum):
     SOURCE_RESULTS = "source_results"
     WEB_SEARCH_TRIGGERED = "web_search_triggered"
     WEB_SEARCH_COMPLETE = "web_search_complete"
+    NLI_SCORED = "nli_scored"
     VERDICT = "verdict"
     DONE = "done"
     ERROR = "error"
