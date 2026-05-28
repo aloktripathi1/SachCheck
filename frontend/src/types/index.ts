@@ -20,10 +20,30 @@ export interface EvidenceSource {
   snippet?: string;
 }
 
+export type ClaimType =
+  | 'statistical'
+  | 'historical'
+  | 'attributed_quote'
+  | 'biographical'
+  | 'scientific'
+  | 'causal'
+  | 'policy';
+
+export interface EntityTag {
+  text: string;
+  type: 'PERSON' | 'ORG' | 'LOC' | 'DATE' | 'QUANTITY';
+}
+
 export interface Claim {
   id: string;
   text: string;
   entity?: string;
+  // Atomic decomposition fields (Branch 1)
+  entities?: EntityTag[];
+  claim_type?: ClaimType;
+  check_worthy?: boolean;
+  reason_if_not?: string;
+  // Verdict fields (populated after synthesis)
   verdict?: VerdictType;
   confidence?: number;
   explanation?: string;
@@ -53,6 +73,10 @@ export interface ArticleScore {
     false: number;
     unverified: number;
   };
+  // Atomic decomposition counters (Branch 1)
+  claimsFound?: number;
+  claimsVerified?: number;
+  claimsSkipped?: number;
 }
 
 export type PipelineStep =
