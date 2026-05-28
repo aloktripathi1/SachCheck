@@ -174,12 +174,15 @@ export function HeroSection({ onNavigate }: HeroSectionProps) {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6, delay: 0.2 }}
-          className="text-sm sm:text-base lg:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed mb-8 sm:mb-10 px-2 sm:px-0"
+          className="text-base lg:text-lg text-slate-400 max-w-2xl mx-auto leading-relaxed mb-8 sm:mb-10 px-2 sm:px-0"
         >
-          SachCheck extracts atomic claims from any article and cross-validates each against
-          <span className="text-slate-200 font-medium"> 4 independent sources</span> —
-          Google Fact Check, Wikipedia, GDELT, and ClaimBuster — delivering per-claim verdicts
-          in <span className="text-slate-200 font-medium">38 seconds</span>.
+          SachCheck extracts atomic claims from any article and cross-validates each against 4 independent sources —{' '}
+          <span className="text-white font-medium">Google Fact Check</span>,{' '}
+          <span className="text-white font-medium">Wikipedia</span>,{' '}
+          <span className="text-white font-medium">GDELT</span>, and{' '}
+          <span className="text-white font-medium">ClaimBuster</span>{' '}
+          — delivering per-claim verdicts in{' '}
+          <span className="text-emerald-400 font-semibold">38 seconds</span>.
         </motion.p>
 
         {/* CTA buttons */}
