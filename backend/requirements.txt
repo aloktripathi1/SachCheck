@@ -17,6 +17,10 @@ pydantic==2.10.6
 # ── Config ────────────────────────────────────────────────────────────────────
 python-dotenv==1.0.1
 
+# ── Testing ───────────────────────────────────────────────────────────────────
+# respx: mock httpx requests in tests (dev/test only)
+respx==0.23.1
+
 # ── Image processing & OCR ────────────────────────────────────────────────────
 # Pillow: image preprocessing (resize, contrast, sharpen, crop)
 Pillow==10.4.0
