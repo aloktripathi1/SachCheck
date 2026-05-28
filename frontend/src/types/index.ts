@@ -34,6 +34,33 @@ export interface EntityTag {
   type: 'PERSON' | 'ORG' | 'LOC' | 'DATE' | 'QUANTITY';
 }
 
+// ── Branch 3 / 4: NLI & 4-band verdict types ─────────────────────────────────
+
+export type VerdictBand =
+  | 'SUPPORTED'
+  | 'REFUTED'
+  | 'MIXED'
+  | 'INSUFFICIENT_EVIDENCE';
+
+export type NLIStance = 'supports' | 'contradicts' | 'neutral';
+
+export type EntityType = 'PERSON' | 'ORG' | 'LOC' | 'DATE' | 'QUANTITY';
+
+export interface Entity {
+  text: string;
+  type: EntityType;
+}
+
+export interface EvidencePassage {
+  id: number;
+  text: string;
+  source_name: string;
+  url?: string;
+  stance: NLIStance;
+  confidence: number;
+  tier: 'A' | 'B' | 'C';
+}
+
 export interface Claim {
   id: string;
   text: string;
@@ -49,6 +76,15 @@ export interface Claim {
   explanation?: string;
   sources?: EvidenceSource[];
   reasoning?: string;
+  // NLI fields (Branch 3)
+  verdict_band?: VerdictBand;
+  supporting_count?: number;
+  contradicting_count?: number;
+  nli_support_score?: number;
+  nli_refute_score?: number;
+  // Web search fields (Branch 2)
+  web_search_used?: boolean;
+  web_search_pending?: boolean;
 }
 
 export interface HeuristicSignal {
@@ -77,6 +113,13 @@ export interface ArticleScore {
   claimsFound?: number;
   claimsVerified?: number;
   claimsSkipped?: number;
+  // NLI band counters (Branch 3)
+  nliBreakdown?: {
+    supported: number;
+    refuted: number;
+    mixed: number;
+    insufficient: number;
+  };
 }
 
 export type PipelineStep =
