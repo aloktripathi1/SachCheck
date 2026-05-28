@@ -18,7 +18,7 @@ from sse_starlette import EventSourceResponse
 
 from models.image_schemas import ImageCheckCreateResponse, ImageStreamEventType
 from models.schemas import CheckCreateResponse, CheckRequest, PipelineInput, StreamEventType
-from pipeline.evidence import gather_evidence
+from pipeline.evidence import gather_evidence, is_evidence_sufficient
 from pipeline.extractor import extract_claims
 from pipeline.image_pipeline import run_image_pipeline
 from pipeline.scorer import score_article
@@ -108,20 +108,50 @@ async def _run_pipeline(check_id: UUID, pipeline_input: PipelineInput) -> None:
                 },
             )
 
+        # Emit web_search_triggered before gather so the frontend can show it
+        # immediately if Tier-1 evidence is likely to be sparse. We fire it
+        # unconditionally here; the gate inside gather_evidence decides whether
+        # the search actually runs.
+        await _publish(
+            check_id,
+            StreamEventType.WEB_SEARCH_TRIGGERED,
+            {
+                "reason": "checking_tier1_sufficiency",
+                "log": "Starting evidence gathering; web search standby",
+            },
+        )
+
         evidence = await gather_evidence(
             query_text=pipeline_input.article_text[:500],
             entities=extraction.entities,
             claim_texts=[claim.text for claim in extraction.claims],
             google_api_key=os.getenv("GOOGLE_FC_API_KEY"),
             claimbuster_api_key=os.getenv("CLAIMBUSTER_API_KEY"),
+            google_cse_api_key=os.getenv("GOOGLE_CSE_API_KEY"),
+            google_cse_id=os.getenv("GOOGLE_CSE_ID"),
         )
+
+        web_search_fired = evidence.source_health.web_search != "skipped"
+        if web_search_fired:
+            sources_used = [r.source for r in evidence.web_results]
+            unique_sources = sorted(set(sources_used))
+            await _publish(
+                check_id,
+                StreamEventType.WEB_SEARCH_COMPLETE,
+                {
+                    "results_count": len(evidence.web_results),
+                    "sources": unique_sources,
+                    "log": f"Web search fallback returned {len(evidence.web_results)} result(s)",
+                },
+            )
 
         await _publish(
             check_id,
             StreamEventType.SOURCE_RESULTS,
             {
                 "source_health": evidence.source_health.model_dump(),
-                "log": "Evidence fetched from Google Fact Check, Wikipedia, GDELT, ClaimBuster",
+                "log": "Evidence fetched from Google Fact Check, Wikipedia, GDELT, ClaimBuster"
+                + (", web search" if web_search_fired else ""),
             },
         )
 
