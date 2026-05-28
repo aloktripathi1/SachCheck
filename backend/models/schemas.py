@@ -13,8 +13,37 @@ class Claim(BaseModel):
     entity: str | None = None
 
 
+class EntityTag(BaseModel):
+    text: str
+    type: str  # PERSON | ORG | LOC | DATE | QUANTITY
+
+
+class ClaimType(str, Enum):
+    STATISTICAL = "statistical"
+    HISTORICAL = "historical"
+    ATTRIBUTED_QUOTE = "attributed_quote"
+    BIOGRAPHICAL = "biographical"
+    SCIENTIFIC = "scientific"
+    CAUSAL = "causal"
+    POLICY = "policy"
+
+
+class AtomicClaim(Claim):
+    """SAFE-style atomic claim with inline entity tags and check-worthiness flag.
+
+    Inherits id/text/entity from Claim so existing pipeline code (synthesizer
+    fallback, image pipeline) continues to work without modification.
+    """
+
+    entities: list[EntityTag] = Field(default_factory=list)
+    claim_type: ClaimType = ClaimType.HISTORICAL
+    check_worthy: bool = True
+    reason_if_not: str | None = None
+
+
 class ExtractionResult(BaseModel):
-    claims: list[Claim]
+    claims: list[AtomicClaim]
+    skipped_claims: list[AtomicClaim] = Field(default_factory=list)
     entities: list[str]
 
 

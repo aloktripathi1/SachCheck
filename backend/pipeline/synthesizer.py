@@ -8,6 +8,7 @@ from anthropic import AsyncAnthropic
 from models.schemas import (
     ArticleBand,
     ArticleVerdict,
+    AtomicClaim,
     Claim,
     ClaimVerdict,
     ClaimVerdictLabel,
@@ -75,7 +76,7 @@ def _claim_sources(evidence: EvidenceBundle, limit: int = 4) -> list[SourceRef]:
     return dedup
 
 
-def _fallback_claim_verdict(claim: Claim, evidence: EvidenceBundle) -> ClaimVerdict:
+def _fallback_claim_verdict(claim: Claim | AtomicClaim, evidence: EvidenceBundle) -> ClaimVerdict:
     false_hits = 0
     true_hits = 0
     matched_sources: list[SourceRef] = []
@@ -118,7 +119,7 @@ def _fallback_claim_verdict(claim: Claim, evidence: EvidenceBundle) -> ClaimVerd
     )
 
 
-def _fallback_article_verdict(claims: list[Claim], evidence: EvidenceBundle, score: HeuristicScore) -> ArticleVerdict:
+def _fallback_article_verdict(claims: list[Claim | AtomicClaim], evidence: EvidenceBundle, score: HeuristicScore) -> ArticleVerdict:
     claim_verdicts = [_fallback_claim_verdict(claim, evidence) for claim in claims]
     band = _band_from_score(score.final_score, score.independent_signal_count)
 
@@ -160,13 +161,21 @@ def _analysis_markdown(verdict: ArticleVerdict) -> str:
 
 async def synthesize(
     client: AsyncAnthropic,
-    claims: list[Claim],
+    claims: list[AtomicClaim],
     evidence: EvidenceBundle,
     score: HeuristicScore,
     model: str = "claude-sonnet-4-6",
 ) -> tuple[ArticleVerdict, str]:
     payload = {
-        "claims": [claim.model_dump() for claim in claims],
+        "claims": [
+            {
+                "id": c.id,
+                "text": c.text,
+                "claim_type": c.claim_type.value if hasattr(c.claim_type, "value") else c.claim_type,
+                "entities": [e.model_dump() for e in c.entities] if hasattr(c, "entities") else [],
+            }
+            for c in claims
+        ],
         "evidence": evidence.model_dump(mode="json"),
         "heuristics": score.model_dump(),
     }
