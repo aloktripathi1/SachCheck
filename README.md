@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./frontend/public/logo.png" alt="SachCheck" width="200" />
+  <img src="./frontend/public/logo.png" alt="SachCheck" width="300" />
 </p>
 
 <p align="center">
