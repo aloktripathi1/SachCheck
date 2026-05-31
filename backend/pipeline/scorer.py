@@ -24,7 +24,14 @@ class DomainReputation:
     mbfc_high_domains: set[str]
 
 
+_reputation_cache: DomainReputation | None = None
+
+
 def load_domain_reputation() -> DomainReputation:
+    global _reputation_cache
+    if _reputation_cache is not None:
+        return _reputation_cache
+
     iffy_domains: set[str] = set()
     mbfc_high_domains: set[str] = set()
 
@@ -45,7 +52,8 @@ def load_domain_reputation() -> DomainReputation:
                 if domain and rating in {"high", "very high", "vh"}:
                     mbfc_high_domains.add(domain)
 
-    return DomainReputation(iffy_domains=iffy_domains, mbfc_high_domains=mbfc_high_domains)
+    _reputation_cache = DomainReputation(iffy_domains=iffy_domains, mbfc_high_domains=mbfc_high_domains)
+    return _reputation_cache
 
 
 def _extract_domain(url: str | None) -> str | None:
