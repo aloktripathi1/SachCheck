@@ -4,9 +4,15 @@ import json
 import re
 from typing import Any
 
+import logging
+
 from anthropic import AsyncAnthropic
 
 from models.schemas import AtomicClaim, ClaimType, EntityTag, ExtractionResult
+
+logger = logging.getLogger("sachcheck.extractor")
+
+_MAX_INPUT_CHARS = 8_000
 
 MAX_CLAIMS_PER_CHECK = 10
 
@@ -153,6 +159,7 @@ async def extract_claims(
     model: str = "claude-haiku-4-5-20251001",
 ) -> ExtractionResult:
     try:
+        truncated = article_text[:_MAX_INPUT_CHARS]
         message = await client.messages.create(
             model=model,
             max_tokens=2000,
@@ -170,7 +177,7 @@ async def extract_claims(
                     "content": (
                         "Extract all atomic, independently verifiable factual claims "
                         "from the text below. Follow the rules exactly.\n\n"
-                        f"{article_text}"
+                        f"<article>\n{truncated}\n</article>"
                     ),
                 }
             ],
@@ -214,4 +221,5 @@ async def extract_claims(
         )
 
     except Exception:
+        logger.exception("Claude extraction failed; falling back to heuristic extractor")
         return _heuristic_extract(article_text)
