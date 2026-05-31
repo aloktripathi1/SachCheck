@@ -299,7 +299,7 @@ async def stream_check(check_id: UUID) -> EventSourceResponse:
         finally:
             check_states.pop(check_id, None)
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(event_generator(), ping=15)
 
 
 async def _publish_image(check_id: UUID, event: ImageStreamEventType, data: dict) -> None:
@@ -353,7 +353,7 @@ async def stream_image_check(check_id: UUID) -> EventSourceResponse:
         finally:
             image_check_states.pop(check_id, None)
 
-    return EventSourceResponse(event_generator())
+    return EventSourceResponse(event_generator(), ping=15)
 
 
 @app.get("/health")
