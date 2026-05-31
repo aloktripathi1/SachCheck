@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from enum import Enum
 from typing import Any, Literal
 from urllib.parse import urlparse
@@ -101,14 +102,31 @@ class WebSearchResult(BaseModel):
     domain: str
     tier: Literal["A", "B", "C"]
     source: Literal["google_cse", "duckduckgo", "google_news_rss"]
+    published_at: str | None = None
 
     @classmethod
-    def from_url(cls, url: str, title: str, description: str, source: Literal["google_cse", "duckduckgo", "google_news_rss"]) -> "WebSearchResult":
+    def from_url(
+        cls,
+        url: str,
+        title: str,
+        description: str,
+        source: Literal["google_cse", "duckduckgo", "google_news_rss"],
+        published_at: str | None = None,
+    ) -> "WebSearchResult":
         try:
-            domain = urlparse(url).netloc.lstrip("www.")
+            netloc = urlparse(url).netloc.lower()
+            domain = re.sub(r"^www\.", "", netloc)
         except Exception:
             domain = ""
-        return cls(url=url, title=title, description=description, domain=domain, tier=_compute_tier(domain), source=source)
+        return cls(
+            url=url,
+            title=title,
+            description=description,
+            domain=domain,
+            tier=_compute_tier(domain),
+            source=source,
+            published_at=published_at,
+        )
 
 
 _TIER_A_DOMAINS: frozenset[str] = frozenset({
