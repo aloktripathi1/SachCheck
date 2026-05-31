@@ -307,10 +307,12 @@ export function useAnalysis() {
       }
     })
 
-    // Network / connection failure
+    // Network / connection failure — only fatal if we haven't received any data yet
     es.onerror = () => {
       setState(s => {
-        if (s.step === 'complete') return s
+        if (s.step === 'complete' || s.step === 'error') return s
+        // If we're mid-pipeline (claims already extracted), ignore transient errors
+        if (s.claims.length > 0 || s.step === 'gathering' || s.step === 'scoring' || s.step === 'synthesizing') return s
         es.close()
         return { ...s, step: 'error', error: 'Lost connection to backend. Is it running on port 8000?' }
       })
