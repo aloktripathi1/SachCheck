@@ -275,7 +275,14 @@ async def gather_evidence(
         rss_client.search(query_text),  # always run, free, no key needed
     ]
 
-    results = await asyncio.gather(*tasks, return_exceptions=True)
+    try:
+        results = await asyncio.wait_for(
+            asyncio.gather(*tasks, return_exceptions=True),
+            timeout=20.0,
+        )
+    except asyncio.TimeoutError:
+        logger.warning("Evidence gather timed out after 20s — using partial results")
+        results = [Exception("timeout")] * len(tasks)
 
     google_result = GoogleFactCheckResult(reviews=[])
     google_health = "error"
@@ -316,6 +323,9 @@ async def gather_evidence(
         ),
     )
 
+    # Deduplicate news_rss_results by URL before storing
+    bundle.news_rss_results = _dedup_by_url(bundle.news_rss_results)
+
     if not is_evidence_sufficient(bundle):
         try:
             web_results, web_health = await _web_search_fallback(
@@ -324,10 +334,22 @@ async def gather_evidence(
                 google_cse_api_key=google_cse_api_key,
                 google_cse_id=google_cse_id,
             )
-            bundle.web_results = web_results
+            # Deduplicate web_results against already-seen RSS URLs
+            rss_urls = {r.url for r in bundle.news_rss_results}
+            bundle.web_results = [r for r in _dedup_by_url(web_results) if r.url not in rss_urls]
             bundle.source_health.web_search = web_health
         except Exception:
             logger.exception("Web search fallback failed unexpectedly")
             bundle.source_health.web_search = "error"
 
     return bundle
+
+
+def _dedup_by_url(results: list[WebSearchResult]) -> list[WebSearchResult]:
+    seen: set[str] = set()
+    out: list[WebSearchResult] = []
+    for r in results:
+        if r.url not in seen:
+            seen.add(r.url)
+            out.append(r)
+    return out

@@ -83,14 +83,13 @@ class GoogleNewsRSSClient:
             return []
 
         results: list[WebSearchResult] = []
-        ns = ""
-        for item in root.findall(f".//{ns}item")[:8]:
-            title = (item.findtext("title") or "").strip()
-            link  = (item.findtext("link")  or "").strip()
-            desc  = (item.findtext("description") or "").strip()
-            # Google News RSS wraps real URL in <link>; strip Google redirect if present
+        for item in root.findall(".//item")[:8]:
+            title    = (item.findtext("title")       or "").strip()
+            link     = (item.findtext("link")        or "").strip()
+            desc     = (item.findtext("description") or "").strip()
+            pub_date = (item.findtext("pubDate")     or "").strip() or None
+            # Google News RSS wraps real URL in <link>; actual link is often in guid
             if link and "news.google.com" in link:
-                # actual article link is often the guid
                 guid = (item.findtext("guid") or "").strip()
                 if guid and guid.startswith("http") and "news.google.com" not in guid:
                     link = guid
@@ -102,6 +101,7 @@ class GoogleNewsRSSClient:
                     title=title,
                     description=re.sub(r"<[^>]+>", "", desc)[:300],
                     source="google_news_rss",
+                    published_at=pub_date,
                 )
             )
         return results
@@ -124,7 +124,10 @@ class GoogleCSEClient:
         try:
             async with _CSE_SEMAPHORE:
                 resp = await client.get(self.BASE_URL, params=params, timeout=5.0)
-                resp.raise_for_status()
+            if resp.status_code == 429:
+                logger.warning("GoogleCSE rate limited (429) — skipping query")
+                return []
+            resp.raise_for_status()
             items = resp.json().get("items") or []
             return [
                 WebSearchResult.from_url(
