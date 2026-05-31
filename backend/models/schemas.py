@@ -100,10 +100,10 @@ class WebSearchResult(BaseModel):
     description: str
     domain: str
     tier: Literal["A", "B", "C"]
-    source: Literal["google_cse", "duckduckgo"]
+    source: Literal["google_cse", "duckduckgo", "google_news_rss"]
 
     @classmethod
-    def from_url(cls, url: str, title: str, description: str, source: Literal["google_cse", "duckduckgo"]) -> "WebSearchResult":
+    def from_url(cls, url: str, title: str, description: str, source: Literal["google_cse", "duckduckgo", "google_news_rss"]) -> "WebSearchResult":
         try:
             domain = urlparse(url).netloc.lstrip("www.")
         except Exception:
@@ -137,6 +137,7 @@ class SourceHealth(BaseModel):
     gdelt: str
     claimbuster: str
     web_search: str = "skipped"
+    news_rss: str = "skipped"
 
 
 class EvidenceBundle(BaseModel):
@@ -146,6 +147,7 @@ class EvidenceBundle(BaseModel):
     claimbuster: ClaimBusterResult
     source_health: SourceHealth
     web_results: list[WebSearchResult] = Field(default_factory=list)
+    news_rss_results: list[WebSearchResult] = Field(default_factory=list)
 
 
 class NLIScore(BaseModel):

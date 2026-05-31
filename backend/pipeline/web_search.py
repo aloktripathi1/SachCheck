@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+import xml.etree.ElementTree as ET
 from urllib.parse import quote_plus
 
 import httpx
@@ -12,6 +13,98 @@ from models.schemas import WebSearchResult
 logger = logging.getLogger("sachcheck.web_search")
 
 _CSE_SEMAPHORE = asyncio.Semaphore(2)
+
+
+def _strip_tags(text: str) -> str:
+    """Remove inline entity tags like [PERSON:Elon Musk] → Elon Musk."""
+    return re.sub(r"\[(?:PERSON|ORG|LOC|DATE|QUANTITY):([^\]]+)\]", r"\1", text)
+
+
+def extract_verb_phrase(claim: str) -> str:
+    """Extract main verb + up to 3 following words from a claim string.
+
+    Tries spaCy first (already installed); falls back to a simple
+    heuristic that takes words after the first recognised entity marker.
+    """
+    clean = _strip_tags(claim).strip()
+    try:
+        import spacy  # type: ignore
+        try:
+            nlp = spacy.load("en_core_web_sm")
+        except OSError:
+            nlp = spacy.load("en_core_web_md")
+        doc = nlp(clean[:200])
+        for token in doc:
+            if token.pos_ == "VERB" and not token.is_stop:
+                phrase_tokens = [token] + [t for t in token.rights][:3]
+                phrase = " ".join(t.text for t in phrase_tokens).strip()
+                if phrase:
+                    return phrase
+    except Exception:
+        pass
+
+    # Fallback: split on first bracket-free word boundary after a capital-word run
+    words = clean.split()
+    # skip leading proper-noun-like words (Title Case), take up to 4 after
+    skip = 0
+    for w in words:
+        if w[0].isupper() if w else False:
+            skip += 1
+        else:
+            break
+    return " ".join(words[skip: skip + 4])
+
+
+def _build_query(claim: str, entities: list[str]) -> str:
+    """Combine all entity texts + verb phrase into a single news-optimised query."""
+    clean_claim = _strip_tags(claim)
+    verb_phrase = extract_verb_phrase(clean_claim)
+    parts = [*entities, verb_phrase] if verb_phrase else entities
+    return " ".join(parts).strip()[:120]
+
+
+class GoogleNewsRSSClient:
+    BASE_URL = "https://news.google.com/rss/search"
+
+    async def search(self, query: str) -> list[WebSearchResult]:
+        params = {
+            "q": query,
+            "hl": "en-IN",
+            "gl": "IN",
+            "ceid": "IN:en",
+        }
+        try:
+            async with httpx.AsyncClient(timeout=5.0) as client:
+                resp = await client.get(self.BASE_URL, params=params)
+                resp.raise_for_status()
+                root = ET.fromstring(resp.text)
+        except Exception as exc:
+            logger.debug("Google News RSS failed: %s", exc)
+            return []
+
+        results: list[WebSearchResult] = []
+        ns = ""
+        for item in root.findall(f".//{ns}item")[:8]:
+            title = (item.findtext("title") or "").strip()
+            link  = (item.findtext("link")  or "").strip()
+            desc  = (item.findtext("description") or "").strip()
+            # Google News RSS wraps real URL in <link>; strip Google redirect if present
+            if link and "news.google.com" in link:
+                # actual article link is often the guid
+                guid = (item.findtext("guid") or "").strip()
+                if guid and guid.startswith("http") and "news.google.com" not in guid:
+                    link = guid
+            if not link:
+                continue
+            results.append(
+                WebSearchResult.from_url(
+                    url=link,
+                    title=title,
+                    description=re.sub(r"<[^>]+>", "", desc)[:300],
+                    source="google_news_rss",
+                )
+            )
+        return results
 
 
 class GoogleCSEClient:
@@ -48,15 +141,14 @@ class GoogleCSEClient:
             return []
 
     async def search_claim(self, claim: str, entities: list[str]) -> list[WebSearchResult]:
-        main_entity = entities[0] if entities else ""
-        # Strip inline entity tags like [PERSON:Elon Musk] → Elon Musk
-        clean_claim = re.sub(r"\[(?:PERSON|ORG|LOC|DATE|QUANTITY):([^\]]+)\]", r"\1", claim)
+        query = _build_query(claim, entities)
+        clean_claim = _strip_tags(claim)
         snippet = clean_claim[:30].rstrip()
 
         queries = [
-            f"{main_entity} {clean_claim[:60]}".strip(),
+            query,
             f'fact-check OR debunked OR false "{snippet}"',
-            f'site:reuters.com OR site:apnews.com "{main_entity}"' if main_entity else f'site:reuters.com OR site:apnews.com {snippet}',
+            f'site:reuters.com OR site:apnews.com {query[:60]}',
         ]
 
         async with httpx.AsyncClient(timeout=5.0) as client:
@@ -80,7 +172,7 @@ class DuckDuckGoClient:
     BASE_URL = "https://api.duckduckgo.com/"
 
     async def search_claim(self, claim: str) -> list[WebSearchResult]:
-        clean = re.sub(r"\[(?:PERSON|ORG|LOC|DATE|QUANTITY):([^\]]+)\]", r"\1", claim)
+        clean = _strip_tags(claim)
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 resp = await client.get(

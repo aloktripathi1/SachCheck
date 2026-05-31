@@ -18,7 +18,7 @@ from models.schemas import (
     WebSearchResult,
     WikipediaSummary,
 )
-from pipeline.web_search import DuckDuckGoClient, GoogleCSEClient
+from pipeline.web_search import DuckDuckGoClient, GoogleCSEClient, GoogleNewsRSSClient
 
 logger = logging.getLogger("sachcheck.evidence")
 
@@ -193,24 +193,22 @@ async def _claimbuster_scores(claims: list[str], api_key: str | None) -> tuple[C
 
 
 def is_evidence_sufficient(bundle: EvidenceBundle) -> bool:
-    """Return True when Tier-1 evidence is rich enough to skip the web search fallback.
+    """Return True when evidence is rich enough to skip the web search fallback.
 
-    Logic:
-    - If GDELT errored (service unavailable), don't count it as a missing signal —
-      require only 1 of the remaining 2 sources (FC or Wikipedia).
-    - If GDELT is available, require 2 of 3 signals.
-    - A Wikipedia result with a long summary (>200 chars) counts as a strong signal.
+    Counts 4 signals: Google FC, Wikipedia, GDELT coverage, Google News RSS.
+    Requires 2+ signals to be satisfied.
+    If GDELT errored, it is excluded and only 1 of the remaining 3 is required.
     """
-    has_factcheck = len(bundle.google_fact_check.reviews) > 0
-    has_wiki = len(bundle.wikipedia) > 0
-    wiki_rich = any(len(w.summary) > 200 for w in bundle.wikipedia)
+    has_factcheck    = len(bundle.google_fact_check.reviews) > 0
+    has_wiki         = len(bundle.wikipedia) > 0
+    wiki_rich        = any(len(w.summary) > 200 for w in bundle.wikipedia)
     has_news_coverage = bundle.gdelt.volume > 3
-    gdelt_errored = bundle.source_health.gdelt == "error"
+    has_news_rss     = len(bundle.news_rss_results) > 0
+    gdelt_errored    = bundle.source_health.gdelt == "error"
 
     if gdelt_errored:
-        # GDELT unavailable — only 2 signals exist; need just 1 of them
-        return has_factcheck or wiki_rich
-    return sum([has_factcheck, has_wiki, has_news_coverage]) >= 2
+        return has_factcheck or wiki_rich or has_news_rss
+    return sum([has_factcheck, has_wiki or wiki_rich, has_news_coverage, has_news_rss]) >= 2
 
 
 async def _web_search_fallback(
@@ -267,11 +265,14 @@ async def gather_evidence(
     google_cse_api_key: str | None = None,
     google_cse_id: str | None = None,
 ) -> EvidenceBundle:
+    rss_client = GoogleNewsRSSClient()
+
     tasks = [
         _google_fact_check_search(query_text, google_api_key),
         _wikipedia_summaries(entities),
         _gdelt_search(query_text),
         _claimbuster_scores(claim_texts, claimbuster_api_key),
+        rss_client.search(query_text),  # always run, free, no key needed
     ]
 
     results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -284,6 +285,8 @@ async def gather_evidence(
     gdelt_health = "error"
     claimbuster_result = ClaimBusterResult(available=False, scores={}, message="not_executed")
     claimbuster_health = "error"
+    news_rss_results: list[WebSearchResult] = []
+    news_rss_health = "error"
 
     if not isinstance(results[0], Exception):
         google_result, google_health = results[0]
@@ -293,18 +296,23 @@ async def gather_evidence(
         gdelt_result, gdelt_health = results[2]
     if not isinstance(results[3], Exception):
         claimbuster_result, claimbuster_health = results[3]
+    if not isinstance(results[4], Exception):
+        news_rss_results = results[4]
+        news_rss_health = "ok" if news_rss_results else "empty"
 
     bundle = EvidenceBundle(
         google_fact_check=google_result,
         wikipedia=wiki_result,
         gdelt=gdelt_result,
         claimbuster=claimbuster_result,
+        news_rss_results=news_rss_results,
         source_health=SourceHealth(
             google_fact_check=google_health,
             wikipedia=wiki_health,
             gdelt=gdelt_health,
             claimbuster=claimbuster_health,
             web_search="skipped",
+            news_rss=news_rss_health,
         ),
     )
 
