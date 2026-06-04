@@ -38,7 +38,12 @@ logger = logging.getLogger("sachcheck")
 app = FastAPI(title="SachCheck API", version="1.0.0")
 anthropic_client = AsyncAnthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
 
-_cors_origins = [o.strip() for o in os.getenv("FRONTEND_ORIGIN", "*").split(",") if o.strip()]
+_cors_origins_env = os.getenv("FRONTEND_ORIGIN", "")
+_cors_origins = [o.strip() for o in _cors_origins_env.split(",") if o.strip()] or [
+    "https://sachcheck.netlify.app",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+]
 app.add_middleware(
     CORSMiddleware,
     allow_origins=_cors_origins,
