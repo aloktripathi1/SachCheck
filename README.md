@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="./frontend/public/SachCheck.png" alt="SachCheck" width="300" />
+  <img src="./frontend/public/SachCheck.png" alt="SachCheck" width="" />
 </p>
 
 <p align="center">
